@@ -1,4 +1,3 @@
-import time
 from machine import Pin, PWM
 import uasyncio as aio
 
