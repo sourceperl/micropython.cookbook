@@ -66,7 +66,7 @@ def uart_task():
         # frame receive loop
         while True:
             # on data available
-            if uart.any():
+            if uart.any() > 0:
                 # read data block with time of arrival
                 rx_t = ticks_ms()
                 rx_b.extend(uart.read(uart.any()))
