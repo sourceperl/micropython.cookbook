@@ -48,11 +48,11 @@ def dump(baudrate=9600, parity=None, stop=1, eof_ms=None, sum=False):
         # automatic value :
         # end of frame (eof) is a silence on rx line > 3.5 * byte transmit time
         rx_silence_ms = ceil(max(1.2 * 3.5 * (1000/(baudrate/10)), 10.0))
-        print('eof detection = {:d} ms (can be overide by "eof_ms" arg)'.format(rx_silence_ms))
+        print('eof detection = {:d} ms (can be overide by "eof_ms" arg)\n'.format(rx_silence_ms))
     else:
         # manual override
-        if not (0 < eof_ms <= 999):
-            raise ValueError('eof_ms must be 1-999 ms or None (automatic)')
+        if not (0 < eof_ms <= 1000):
+            raise ValueError('eof_ms must be between 0 to 1000 ms or None (automatic)')
         rx_silence_ms = eof_ms
     # init UART
     uart = machine.UART(uart_id, baudrate, tx=tx_pin, rx=rx_pin, bits=8, parity=parity, stop=stop)
@@ -79,13 +79,13 @@ def dump(baudrate=9600, parity=None, stop=1, eof_ms=None, sum=False):
         # check frame
         crc_ok = check_crc_ok(rx_b)
         # dump frame
+        frame_dump = '[size {:>3}/CRC {:<3}] '.format(len(rx_b), 'OK' if crc_ok else 'ERR')
         if sum:
-            frame_dump = '[size {:>3}/CRC {:<5}] {:}'.format(len(rx_b), 'GOOD' if crc_ok else 'ERROR', frame2hex(rx_b[:10]))
-            if len(rx_b) > 10:
-                frame_dump += '-..'
+            frame_dump += frame2hex(rx_b[:10]) + ('-..' if len(rx_b) > 10 else '')
         else:
-            frame_dump = '[size {:>3}/CRC {:<5}] {:}'.format(len(rx_b), 'GOOD' if crc_ok else 'ERROR', frame2hex(rx_b))
+            frame_dump += frame2hex(rx_b)
         print(frame_dump)
+
 
 def help():
     print(open('help.txt', 'r').read())

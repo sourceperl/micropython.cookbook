@@ -4,7 +4,7 @@ Commands:
     - "baudrate" valid 300-115200 bauds (default is 9600)
     - "parity" can be None (default), 0 is even, 1 is odd
     - "stop" can be 1 (default) or 2 stop bits
-    - "eof_ms" end of frame detection value in ms (valid 1-999 ms), default is None (automatic mode)
+    - "eof_ms" end of frame detection value in ms (valid 0-1000 ms), default is None (automatic mode)
     - "sum" if set to True (default is False) dump only first 10 bytes of frame
     
     example: dump(baudrate=115200, parity=0, stop=2) run capture at 115200,8,E,2 with automatic end of frame detect
