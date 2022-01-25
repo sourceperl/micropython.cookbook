@@ -1,6 +1,5 @@
 from utime import sleep, ticks_us, ticks_diff
 from machine import Pin, UART
-from math import ceil
 
 
 # some vars
@@ -9,12 +8,12 @@ tx_pin = Pin(4, Pin.IN)
 rx_pin = Pin(5, Pin.IN)
 
 
-def crc16(data: bytearray):
+# some function
+def crc16(frame: bytes):
     crc = 0xFFFF
-    for byte in bytearray(data):
-        next_byte = byte
-        crc ^= next_byte
-        for i in range(8):
+    for byte in frame:
+        crc ^= byte
+        for _ in range(8):
             lsb = crc & 1
             crc >>= 1
             if lsb:
@@ -22,23 +21,13 @@ def crc16(data: bytearray):
     return crc
 
 
-def frame2hex(frame: bytearray): 
+def frame2hex(frame: bytes):
     return '-'.join(['%02X' % b for b in frame])
-
-
-def check_crc_ok(frame: bytearray): 
-    try:
-        assert len(frame) > 2
-        cp_crc = crc16(frame[:-2])
-        rx_crc = int.from_bytes(frame[-2:], 'little')
-        return cp_crc == rx_crc
-    except:
-        return False
 
 
 def dump(baudrate=9600, parity=None, stop=1, eof_ms=None, sum=False):
     # check params
-    if not (300 < baudrate <= 115_200):
+    if not (300 <= baudrate <= 115_200):
         raise ValueError('valid baudrate is between 300 to 115200 bauds')        
     if parity not in (None, 0, 1):
         raise ValueError('parity can be None, 0 (even) or 1 (odd)')
@@ -47,44 +36,42 @@ def dump(baudrate=9600, parity=None, stop=1, eof_ms=None, sum=False):
     if eof_ms is None:
         # automatic value :
         # end of frame (eof) is a silence on rx line > 3.5 * byte transmit time
-        rx_silence_ms = ceil(max(1.2 * 3.5 * (1000/(baudrate/10)), 10.0))
-        print('eof detection = {:d} ms (can be overide by "eof_ms" arg)\n'.format(rx_silence_ms))
+        recv_end_ms = round(3.5 * (1000/(baudrate/11)))
+        recv_end_ms = max(recv_end_ms, 1)
+        print(f'eof detection = {recv_end_ms:d} ms (can be overide by "eof_ms" arg)\n')
     else:
         # manual override
-        if not (0 < eof_ms <= 1000):
+        if not (0 <= eof_ms <= 1000):
             raise ValueError('eof_ms must be between 0 to 1000 ms or None (automatic)')
-        rx_silence_ms = eof_ms
+        recv_end_ms = eof_ms
     # init UART
-    uart = machine.UART(uart_id, baudrate, tx=tx_pin, rx=rx_pin, bits=8, parity=parity, stop=stop)
-    # flush buffer after UART startup
-    sleep(0.5)
-    uart.read(uart.any())
+    uart = machine.UART(uart_id, baudrate, tx=tx_pin, rx=rx_pin, bits=8, parity=parity, stop=stop,
+                        rxbuf=256, timeout=0, timeout_char=recv_end_ms)
+    # skip first incomplete frame
+    while not uart.read():
+        pass
+    # init
+    f_count = 0
     # main loop
     while True:
-        rx_b = bytearray()
-        rx_t = ticks_us()
         # frame receive loop
         while True:
-            # on data available
-            if uart.any() > 0:
-                # read data block with time of arrival
-                rx_t = ticks_us()
-                rx_b.extend(uart.read(uart.any()))
-                # limit buffer size to 256 bytes
-                rx_b = rx_b[-256:]
-            frame_end = ticks_diff(ticks_us(), rx_t) > rx_silence_ms * 1000
-            # out of receive loop if data in buffer and end of frame occur 
-            if frame_end and rx_b:
+            recv_b = uart.read()
+            if recv_b:
                 break
-        # check frame
-        crc_ok = check_crc_ok(rx_b)
-        # dump frame
-        frame_dump = '[size {:>3}/CRC {:<3}] '.format(len(rx_b), 'OK' if crc_ok else 'ERR')
-        if sum:
-            frame_dump += frame2hex(rx_b[:10]) + ('-..' if len(rx_b) > 10 else '')
+        # frame count
+        f_count += 1
+        # check CRC
+        crc_ok = crc16(recv_b) == 0
+        # format dump message
+        crc_str = 'OK' if crc_ok else 'ERR'
+        if sum and len(recv_b) > 20:
+            dump_str = frame2hex(recv_b[:20])
+            dump_str += '-..'
         else:
-            frame_dump += frame2hex(rx_b)
-        print(frame_dump)
+            dump_str = frame2hex(recv_b)
+        # print dump message
+        print(f'[{f_count:>4d}/{len(recv_b):>3}/{crc_str:<3}] {dump_str}')
 
 
 def help():
