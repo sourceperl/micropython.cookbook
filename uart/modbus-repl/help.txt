@@ -12,6 +12,6 @@ Make capture with "spy" object from python REPL:
 - set serial end of frame detection value in ms (valid 0-1000 ms), default is None (automatic mode)
     >>> spy.eof_ms = None
 
-- dump(size=10): start a modbus frame dump of size frames (exit with CTRL+C if need)
-    >>> # dump 10 frames
+- start a modbus frame dump of size frames with command: spy.dump(size)
+    >>> # dump 10 frames, exit with CTRL+C if need
     >>> spy.dump(10)
