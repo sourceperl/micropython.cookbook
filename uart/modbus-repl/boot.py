@@ -1,5 +1,4 @@
 import struct
-import sys
 from time import ticks_add, ticks_diff, ticks_ms
 from machine import Pin, UART
 
@@ -17,19 +16,19 @@ class ModbusFrame:
         return len(self.raw)
 
     @property
-    def raw_pdu(self):
+    def raw_pdu(self) -> bytes:
         return self.raw[1:-2]
 
     @property
-    def slave_address(self):
+    def slave_address(self) -> int:
         return self.raw[0]
 
     @property
-    def function_code(self):
+    def function_code(self) -> int:
         return self.raw[1]
 
     @property
-    def is_valid(self):
+    def is_valid(self) -> bool:
         return len(self.raw) > 4 and self.crc_is_valid
 
     @property
@@ -92,39 +91,39 @@ class Spy:
         self.eof_ms = eof_ms
 
     @property
-    def baudrate(self):
+    def baudrate(self) -> int:
         return self._baudrate
 
     @baudrate.setter
-    def baudrate(self, value):
+    def baudrate(self, value: int):
         if not (300 <= value <= 115_200):
             raise ValueError('valid baudrate is between 300 to 115200 bauds')
         self._baudrate = int(value)
 
     @property
-    def parity(self):
+    def parity(self) -> int:
         return self._parity
 
     @parity.setter
-    def parity(self, value):
+    def parity(self, value: int):
         if value not in (None, 0, 1):
             raise ValueError('parity can be None, 0 (even) or 1 (odd)')
         self._parity = value
 
     @property
-    def stop(self):
+    def stop(self) -> int:
         return self._stop
 
     @stop.setter
-    def stop(self, value):
+    def stop(self, value: int):
         if value not in (1, 2):
             raise ValueError('stop (number of stop bits) can be 1 or 2')
         self._stop = int(value)
 
     @property
-    def eof_ms(self):
+    def eof_ms(self) -> int:
         if self._eof_ms is None:
-            # automatic:
+            # automatic
             # end of frame (eof) is a silence on rx line > 3.5 * byte transmit time
             _eof_ms = round(3.5 * (1000/(self.baudrate/11)))
             return max(_eof_ms, 1)
@@ -132,7 +131,7 @@ class Spy:
             return self._eof_ms
 
     @eof_ms.setter
-    def eof_ms(self, value):
+    def eof_ms(self, value: int):
         if value is None:
             # automatic
             self._eof_ms = value
@@ -142,7 +141,7 @@ class Spy:
                 raise ValueError('eof_ms must be between 0 to 1000 ms or None (automatic)')
             self._eof_ms = int(value)
 
-    def dump(self, size=10, wait_s=60.0):
+    def dump(self, size: int=10, wait_s: float=60.0):
         # check params
         size = int(size)
         if not (1 <= size <= 100):
@@ -150,14 +149,14 @@ class Spy:
         wait_s = float(wait_s)
         if not (1.0 <= wait_s <= 3600.0):
             raise ValueError('wait_s must be between 1 to 3600 s')
-        print(f'end of frame detection = {self.eof_ms:d} ms (can be overide by "eof_ms" property)\n')
+        print(f'end of frame detection set {self.eof_ms:d} ms (can be overide by "eof_ms" property)\n')
         # init UART
         uart = UART(self.UART_ID, baudrate=self.baudrate, bits=8, parity=self.parity, stop=self.stop,
                     tx=self.TX_PIN, rx=self.RX_PIN, rxbuf=256, timeout=0, timeout_char=self.eof_ms)
-        # buffering frames
-        print('start analysis, please wait')
-        print('')
-        print('.' * size)
+        # display analysis start message and a progress bar
+        print('serial analysis in progress, please wait\n')
+        print('[%s]' % ('-' * size), end='\r')
+        print('[', end='')
         # init frame buffer
         self.frames_l.clear()
         # init loop values
@@ -181,7 +180,7 @@ class Spy:
                     skip_first = False
                     continue
                 # store receive f
-                sys.stdout.write('.')
+                print('#', end='')
                 self.frames_l.append(ModbusFrame(recv_raw_f))
                 # exit on buffer full
                 if len(self.frames_l) >= size:
@@ -195,6 +194,7 @@ class Spy:
                 crc_str = ('ERR', 'OK')[frame.crc_is_valid]
                 # print dump message
                 print(f'[{i:>3d}/{len(frame):>3}/{crc_str:<3}] {frame}')
+            print('\nframes are also available in frames_l property')
         except RuntimeError as e:
             print(f'aborted: {e}')
 
