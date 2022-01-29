@@ -1,10 +1,17 @@
-Commands:
+Make capture with "spy" object from python REPL:
 
-- dump(): start a modbus frame dump at 115200 bauds (exit with CTRL+C)
-    - "baudrate" valid 300-115200 bauds (default is 9600)
-    - "parity" can be None (default), 0 is even, 1 is odd
-    - "stop" can be 1 (default) or 2 stop bits
-    - "eof_ms" end of frame detection value in ms (valid 0-1000 ms), default is None (automatic mode)
-    - "sum" if set to True (default is False) dump only first 10 bytes of frame
-    
-    example: dump(baudrate=115200, parity=0, stop=2) run capture at 115200,8,E,2 with automatic end of frame detect
+- set serial baudrate: valid 300-115200 bauds (default is 9600)
+    >>> spy.baudrate = 9600
+
+- set serial parity: can be None (default), 0 is even, 1 is odd
+    >>> spy.parity = None
+
+- set serial stop bit: can be 1 (default) or 2 stop bits
+    >>> spy.stop = 1
+
+- set serial end of frame detection value in ms (valid 0-1000 ms), default is None (automatic mode)
+    >>> spy.eof_ms = None
+
+- dump(size=10): start a modbus frame dump of size frames (exit with CTRL+C if need)
+    >>> # dump 10 frames
+    >>> spy.dump(10)

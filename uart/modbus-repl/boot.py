@@ -141,36 +141,35 @@ class Spy:
                 raise ValueError('eof_ms must be between 0 to 1000 ms or None (automatic)')
             self._eof_ms = int(value)
 
-    def dump(self, size: int=10, wait_s: float=60.0):
+    def dump(self, size: int=10):
         # check params
         size = int(size)
         if not (1 <= size <= 100):
             raise ValueError('size must be between 1 to 100')
-        wait_s = float(wait_s)
-        if not (1.0 <= wait_s <= 3600.0):
-            raise ValueError('wait_s must be between 1 to 3600 s')
-        print(f'end of frame detection set {self.eof_ms:d} ms (can be overide by "eof_ms" property)\n')
+        # startup messages
+        try:
+            parity_char = ('E', 'O')[self.parity]
+        except (IndexError, TypeError):
+            parity_char = 'N'
+        print(f'Try to capture {size} modbus RTU frames (serial settings: {self.baudrate:d},{parity_char},8,{self.stop}).')
+        print(f'End of frame silent = {self.eof_ms:d} ms (if need, overide it with eof_ms property).')
+        print(f'Use Control-C to exit.\n')
         # init UART
         uart = UART(self.UART_ID, baudrate=self.baudrate, bits=8, parity=self.parity, stop=self.stop,
                     tx=self.TX_PIN, rx=self.RX_PIN, rxbuf=256, timeout=0, timeout_char=self.eof_ms)
         # display analysis start message and a progress bar
-        print('serial analysis in progress, please wait\n')
+        print('Serial analysis in progress, please wait...\n')
         print('[%s]' % ('-' * size), end='\r')
         print('[', end='')
         # init frame buffer
         self.frames_l.clear()
-        # init loop values
-        t_start_ms = ticks_ms()
-        t_end_ms = ticks_add(t_start_ms, round(wait_s * 1000))
+        # init loop value
         skip_first = True
         try:
             # main loop
             while True:
                 # frame receive loop
                 while True:
-                    # check timeout
-                    if ticks_diff(ticks_ms(), t_end_ms) > 0:
-                        raise RuntimeError('timeout error')
                     # read frame
                     recv_raw_f = uart.read(256)
                     if recv_raw_f:
@@ -187,21 +186,22 @@ class Spy:
                     break
             print('\n')
             # display the report
-            print('synthesis report')
+            print('Synthesis report:')
             print('')
             for i, frame in enumerate(self.frames_l):
                 # format dump message
                 crc_str = ('ERR', 'OK')[frame.crc_is_valid]
                 # print dump message
                 print(f'[{i:>3d}/{len(frame):>3}/{crc_str:<3}] {frame}')
-            print('\nframes are also available in frames_l property')
-        except RuntimeError as e:
-            print(f'aborted: {e}')
-
-    @staticmethod
-    def help():
-        print(open('help.txt', 'r').read())
+            print('\nFrames are also available in frames_l property.')
+        except KeyboardInterrupt:
+            print('')
 
 
-# user uart
+# override default help()
+def help():
+    print('')
+    print(open('help.txt', 'r').read())
+
+# define spy object for user
 spy = Spy(baudrate=9600)
