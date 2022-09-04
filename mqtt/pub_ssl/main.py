@@ -1,3 +1,10 @@
+"""
+Publish a topic to an MQTT server.
+Use SSL layer and MQTT authentication.
+
+Test on Pico W with micropythonv1.19.1.
+"""
+
 import json
 import rp2
 import machine
@@ -52,7 +59,7 @@ if wlan_status == network.STAT_GOT_IP:
 else:
     raise RuntimeError('wifi connection failed')
 
-# build SSL MQTT client (warn: here we don't validate server certificates)
+# build SSL MQTT client (warn: here we don't validate server certificate)
 client_id = ubinascii.hexlify(machine.unique_id())
 ssl_d = {'key': open('/crt/mqtt-cli-pico-w.der.key').read(),
          'cert': open('/crt/mqtt-cli-pico-w.der.crt').read()}
