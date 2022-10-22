@@ -158,7 +158,7 @@ class ADS1115:
         self._write_register(_REGISTER_CONFIG, self.mode)
         return res if res < 0x8000 else res - 0x10000
 
-    def alert_start(self, rate, channe1l, channel2 = None, threshold_high = 0x4000):
+    def alert_start(self, rate, channel1, channel2 = None, threshold_high = 0x4000):
         """Start continuous measurement, set ALERT pin on threshold."""
         self._write_register(_REGISTER_LOWTHRESH, 0)
         self._write_register(_REGISTER_HITHRESH, threshold_high)
