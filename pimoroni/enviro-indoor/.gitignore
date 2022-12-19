@@ -1,0 +1,3 @@
+# disallow SSL files
+*.crt
+*.key

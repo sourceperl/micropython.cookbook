@@ -56,6 +56,11 @@ hold_vsys_en_pin.value(True)
 # turn on activity flag
 activity_led_pwm.duty_u16(0xffff//2)
 
+# workaround for https://github.com/micropython/micropython/issues/8904
+# allow time for USB bus to enumerate
+if vbus_present_pin.value():
+    sleep_ms(5000)
+
 # init wlan
 rp2.country('FR')
 wlan = network.WLAN(network.STA_IF)
@@ -93,34 +98,35 @@ data_d = OrderedDict({'temperature': temperature, 'humidity': humidity, 'pressur
                       'color_temperature': colour_temperature_from_rgbc(r, g, b, c)})
 
 # WLAN: wait for connection with 10 second timeout
-timeout = 10
+print('waiting for connection')
+timeout = 20
 while timeout > 0:
     if wlan.status() < 0 or wlan.status() >= 3:
         break
+    print('.', end='')
     timeout -= 1
-    print('waiting for connection...')
-    sleep_ms(1000)
+    sleep_ms(500)
+print('')
 
 # check network status
 wlan_status = wlan.status()
 if wlan_status == network.STAT_GOT_IP:
-    print('wifi connected')
-    print(f'@IP is {wlan.ifconfig()[0]}')
+    print(f'wifi connected: @IP is {wlan.ifconfig()[0]}')
 else:
     raise RuntimeError('wifi connection failed')
 
 # build SSL MQTT client (warn: here we don't validate server certificate)
 client_id = ubinascii.hexlify(unique_id())
-ssl_d = {'key': open('/crt/mqtt-cli-pico-w.der.key').read(),
-         'cert': open('/crt/mqtt-cli-pico-w.der.crt').read()}
+ssl_d = {'key': open('/crt/mqtt-cli-enviro-indoor.der.key').read(),
+         'cert': open('/crt/mqtt-cli-enviro-indoor.der.crt').read()}
 mcl = MQTTClient(client_id=client_id, server='192.168.1.60', port=8883,
                  user=MQTT_USER, password=MQTT_PWD, ssl=True, ssl_params=ssl_d)
 print('connect to MQTT server... ', end='')
 mcl.connect()
 print('OK')
 
-# publish loop
-topic = b'test/mytopic'
+# publish
+topic = b'test/enviro-indoor'
 payload = json.dumps(data_d).encode()
 print(f'MQTT publish: {topic=}, {payload=}')
 mcl.publish(topic, payload)
