@@ -15,7 +15,7 @@ from lib import tinyweb
 
 # some const
 AP_HOSTNAME = 'pico-w'
-DEBUG_STA_MODE = True
+DEBUG_STA_MODE = False
 
 
 # some class
