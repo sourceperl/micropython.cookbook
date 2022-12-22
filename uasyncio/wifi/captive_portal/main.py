@@ -14,12 +14,12 @@ import rp2
 from lib import tinyweb
 
 # some const
-HOSTNAME = 'pico-w'
-DEBUG_STA_MODE = False
+AP_HOSTNAME = 'pico-w'
+DEBUG_STA_MODE = True
 
 
 # some class
-class ShareList:
+class Share:
     counter = 0
     volts = 0.0
     temperature = 0.0
@@ -38,7 +38,7 @@ if DEBUG_STA_MODE:
 else:
     wlan = network.WLAN(network.AP_IF)
     wlan.config(essid='Pico W')
-    wlan.config(security=False)
+    wlan.config(password='p@ssword')
     wlan.active(True)
 
 # wait access-point is ready
@@ -94,10 +94,10 @@ web_srv = tinyweb.webserver(debug=True)
 @web_srv.route('/', save_headers=['Host'])
 async def index(request, response):
     # redirect for bad hostname
-    if DEBUG_STA_MODE or request.headers.get(b'Host', b'').decode() == HOSTNAME:
+    if DEBUG_STA_MODE or request.headers.get(b'Host', b'').decode() == AP_HOSTNAME:
         await response.send_file('static/index.html')
     else:
-        await response.redirect(f'http://{HOSTNAME}/')
+        await response.redirect(f'http://{AP_HOSTNAME}/')
 
 
 @web_srv.route('/css/<fn>')
@@ -115,32 +115,36 @@ async def files_js(request, response, fn):
     await response.send_file(f'static/js/{fn}.gz', content_type='application/javascript', content_encoding='gzip')
 
 
-# API: export ShareList values
+# API: export data values endpoint
 @web_srv.resource('/api/export.json')
 def export_json(_data):
-    return {'temperature': round(ShareList.temperature, 2),
-            'counter': ShareList.counter,
-            'led_status': ShareList.led_pin.value()}
+    return {'temperature': round(Share.temperature, 2),
+            'counter': Share.counter,
+            'led_on': bool(Share.led_pin.value())}
 
 
-# API: onboard LED control
-@web_srv.resource('/api/led', method='POST')
+# API: onboard LED control endpoint
+@web_srv.resource('/api/led_ctrl', method='POST')
 def led_control(data):
     led_status = data.get('status', '')
     if led_status == 'on':
-        ShareList.led_pin.value(True)
+        Share.led_pin.value(True)
         return {'message': 'LED is turn on'}
     elif led_status == 'off':
-        ShareList.led_pin.value(False)
+        Share.led_pin.value(False)
         return {'message': 'LED is turn off'}
     return {'message': 'error (status must be set to on or off)'}
 
 
-# redirect (301) the various endpoints that OSes use to check connectivity
-if not DEBUG_STA_MODE:
-    @web_srv.catchall()
-    async def catchall(request, response):
-        await response.redirect(f'http://{HOSTNAME}/')
+# handle call to an undefined route
+@web_srv.catchall()
+async def catchall(request, response):
+    if DEBUG_STA_MODE:
+        # default handler: HTTP 404 not found
+        await response.error(404)
+    else:
+        # redirect (301) the various endpoints that OSes use to check connectivity
+        await response.redirect(f'http://{AP_HOSTNAME}/')
 
 
 # tinyweb automatically adds the web server to the event loop
@@ -149,10 +153,10 @@ web_srv.run(host='0.0.0.0', port=80, loop_forever=False)
 
 
 # main task
-async def feed_list_task():
+async def update_data_task():
     while True:
-        ShareList.counter += 1
-        ShareList.temperature = 27 - ((ADC(4).read_u16() * 3.3 / 65535) - 0.706) / 0.001721
+        Share.counter += 1
+        Share.temperature = 27 - ((ADC(4).read_u16() * 3.3 / 65535) - 0.706) / 0.001721
         await aio.sleep_ms(1_000)
 
 
@@ -160,5 +164,5 @@ async def feed_list_task():
 loop = aio.get_event_loop()
 if not DEBUG_STA_MODE:
     loop.create_task(dns_srv_task(ip_address=ap_ip_address))
-loop.create_task(feed_list_task())
+loop.create_task(update_data_task())
 loop.run_forever()

@@ -11,12 +11,16 @@
   <script>
     // pull http://url/api/export.json API endpoint
     function load_data() {
-      fetch('/api/export.json', { method: 'GET', signal: AbortSignal.timeout(4000) })
+      // set abort controller for 4s fetch timeout
+      const to_ctrl = new AbortController()
+      setTimeout(() => to_ctrl.abort(), 4000)
+      // start fetch request with timeout
+      fetch('/api/export.json', { method: 'GET', signal: to_ctrl.signal })
         .then(response => response.json())
         .then(js_data => {
           document.getElementById('temp_field').innerHTML = `${js_data.temperature.toFixed(2)} °C`;
           document.getElementById('counter_field').innerHTML = js_data.counter;
-          if (js_data.led_status) {
+          if (js_data.led_on) {
             document.getElementById('led_status_field').innerHTML = 'On';
             document.getElementById('btn_led_on').disabled = true;
             document.getElementById('btn_led_off').disabled = false;
@@ -33,9 +37,13 @@
         })
     }
     // control http://url/api/led API endpoint
-    function ctrl_led(status) {
-      fetch('/api/led', {
-        method: 'POST', signal: AbortSignal.timeout(4000),
+    function led_ctrl(status) {
+      // set abort controller for 4s fetch timeout
+      const to_ctrl = new AbortController()
+      setTimeout(() => to_ctrl.abort(), 4000)
+      // start fetch request with timeout
+      fetch('/api/led_ctrl', {
+        method: 'POST', signal: to_ctrl.signal,
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'status': status })
       })
         .then(_ => {
@@ -45,8 +53,8 @@
     // on load (DOM is ready)
     window.onload = function () {
       // button setup
-      document.getElementById('btn_led_on').onclick = function () { ctrl_led('on', '#btn_led_on'); }
-      document.getElementById('btn_led_off').onclick = function () { ctrl_led('off', '#btn_led_off'); }
+      document.getElementById('btn_led_on').onclick = function () { led_ctrl('on'); }
+      document.getElementById('btn_led_off').onclick = function () { led_ctrl('off'); }
       // refresh data every 2s
       setInterval(load_data, 2000);
       // immediate refresh
