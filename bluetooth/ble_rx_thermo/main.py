@@ -1,4 +1,7 @@
-""" Collect ThermoPro TP357 bluetooth data (https://buythermopro.com/product/tp357/).
+""" Collect data from BLE sensors:
+
+- ThermoPro TP357 indoor hygrometer thermometer (https://buythermopro.com/product/tp357/)
+- SwitchBot W3400010 outdoor hygrometer thermometer
 
 Export advertising elements as json messages.
 """
@@ -51,23 +54,22 @@ def on_ble_event(event, data):
         # TP357 messages
         if name.startswith('TP357'):
             # test "manufacturer specific data" is set
-            if msd_l and len(msd_l[0]) == 6:
+            if len(msd) == 6:
                 # populate export_d with data of first MSD field
                 export_d['device'] = 'tp357'
                 (temp, hum) = unpack('<hB', msd[1:4])[:2]
                 export_d['temp_c'] = float(temp/10)
                 export_d['hum_p'] = int(hum)
         # W3400010 messages
-        elif msd_l and len(msd_l[0]) == 14:
-            mfr_data = msd_l[0]
+        elif len(msd) == 14:
             # if company ID is 0x0969 (Woan technology)
             if msd[:2] == b'\x69\x09':
                 export_d['device'] = 'w340'
                 export_d['batt_p'] = msd[8] & 0x7f
                 if msd[11] < 0x80:
-                    export_d['temp_c'] = -msd[11] + mfr_data[10] / 10.0
+                    export_d['temp_c'] = -msd[11] + msd[10] / 10.0
                 else:
-                    export_d['temp_c'] = msd[11] - 0x80 + mfr_data[10] / 10.0
+                    export_d['temp_c'] = msd[11] - 0x80 + msd[10] / 10.0
                 export_d['hum_p'] = msd[12]
         # if export dict is set
         if export_d:
