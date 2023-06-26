@@ -50,7 +50,7 @@ def on_ble_event(event, data):
         if name.startswith('TP357'):
             # test "manufacturer specific data" is set
             mfr_data_l = decode_field(adv_data, ADV_MANUF_SPEC_DATA)
-            if len(mfr_data_l) > 0:
+            if len(mfr_data_l) > 0 and len(mfr_data_l[0]) == 6:
                 # populate export_d with data of first MSD field
                 mfr_data = mfr_data_l[0]
                 (temp, hum) = unpack('<hB', mfr_data[1:4])[:2]
