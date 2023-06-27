@@ -7,8 +7,8 @@ Export advertising elements as json messages.
 """
 
 from micropython import const
-from ubinascii import hexlify
 import ubluetooth
+from ucollections import OrderedDict
 import ujson
 from ustruct import unpack
 import utime
@@ -50,7 +50,7 @@ def on_ble_event(event, data):
         msd_l = decode_field(adv_data, ADV_MANUF_SPEC_DATA)
         msd = msd_l[0] if msd_l else b''
         # init an export dict
-        export_d = {}
+        export_d = OrderedDict()
         # TP357 messages
         if name.startswith('TP357'):
             # test "manufacturer specific data" is set
@@ -61,24 +61,30 @@ def on_ble_event(event, data):
                 export_d['temp_c'] = float(temp/10)
                 export_d['hum_p'] = int(hum)
         # W3400010 messages
-        elif len(msd) == 14:
-            # if company ID is 0x0969 (Woan technology)
-            if msd[:2] == b'\x69\x09':
-                export_d['device'] = 'w340'
-                export_d['batt_p'] = msd[8] & 0x7f
+        # company ID == 0x0969 (Woan technology)
+        elif msd[:2] == b'\x69\x09':
+            if len(msd) == 14:
+                export_d['device'] = 'w3400'
                 if msd[11] < 0x80:
                     export_d['temp_c'] = -msd[11] + msd[10] / 10.0
                 else:
                     export_d['temp_c'] = msd[11] - 0x80 + msd[10] / 10.0
                 export_d['hum_p'] = msd[12]
+                export_d['batt_p'] = msd[8] & 0x7f
+                export_d['raw'] = msd[8:14].hex('-')
         # if export dict is set
         if export_d:
-            # add mandatory fields
-            export_d['name'] = name
-            export_d['addr'] = hexlify(bytes(addr_b), '-').decode()
-            export_d['rssi'] = rssi
+            # build json dict with mandatory fields ahead
+            to_js_d = OrderedDict()
+            to_js_d['device'] = export_d.pop('device')
+            to_js_d['addr'] = addr_b.hex('-')
+            to_js_d['rssi'] = rssi
+            # add optional fields
+            if name:
+                to_js_d['name'] = name
+            to_js_d.update(export_d)
             # export adv dict as a json message
-            print(ujson.dumps(export_d))
+            print(ujson.dumps(to_js_d))
 
 
 if __name__ == '__main__':
