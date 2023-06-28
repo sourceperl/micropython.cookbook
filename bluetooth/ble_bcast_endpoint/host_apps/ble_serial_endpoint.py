@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+""" Relay json message from serial to redis DB. """
+
 import argparse
 from datetime import datetime
 import json
