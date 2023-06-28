@@ -46,6 +46,7 @@ def on_ble_event(event, data):
     if event == IRQ_SCAN_RESULT:
         # scan items
         addr_type, addr_b, adv_type, rssi, adv_data = data
+        bd_addr = addr_b.hex('-')
         name = decode_short_name(adv_data) or decode_compl_name(adv_data)
         msd_l = decode_field(adv_data, ADV_MANUF_SPEC_DATA)
         msd = msd_l[0] if msd_l else b''
@@ -56,7 +57,8 @@ def on_ble_event(event, data):
             # test "manufacturer specific data" is set
             if len(msd) == 6:
                 # populate export_d with data of first MSD field
-                export_d['device'] = 'tp357'
+                export_d['model'] = 'tp357'
+                export_d['id'] = bd_addr
                 (temp, hum) = unpack('<hB', msd[1:4])[:2]
                 export_d['temp_c'] = float(temp/10)
                 export_d['hum_p'] = int(hum)
@@ -64,27 +66,29 @@ def on_ble_event(event, data):
         # company ID == 0x0969 (Woan technology)
         elif msd[:2] == b'\x69\x09':
             if len(msd) == 14:
-                export_d['device'] = 'w3400'
+                export_d['model'] = 'w3400010'
+                export_d['id'] = bd_addr
+                export_d['debug'] = msd[8:10].hex('-')
                 if msd[11] < 0x80:
                     export_d['temp_c'] = -msd[11] + msd[10] / 10.0
                 else:
                     export_d['temp_c'] = msd[11] - 0x80 + msd[10] / 10.0
                 export_d['hum_p'] = msd[12]
-                export_d['batt_p'] = msd[8] & 0x7f
-                export_d['raw'] = msd[8:14].hex('-')
+                # export_d['batt_p'] = msd[8] & 0x7f
         # if export dict is set
         if export_d:
             # build json dict with mandatory fields ahead
             to_js_d = OrderedDict()
-            to_js_d['device'] = export_d.pop('device')
-            to_js_d['addr'] = addr_b.hex('-')
+            to_js_d['bd_addr'] = addr_b.hex('-')
             to_js_d['rssi'] = rssi
+            to_js_d['id'] = export_d.pop('id')
+            to_js_d['model'] = export_d.pop('model')
             # add optional fields
             if name:
                 to_js_d['name'] = name
             to_js_d.update(export_d)
-            # export adv dict as a json message
-            print(ujson.dumps(to_js_d))
+            # export adv dict as a json (compact) message
+            print(ujson.dumps(to_js_d, separators=(',', ':')))
 
 
 if __name__ == '__main__':

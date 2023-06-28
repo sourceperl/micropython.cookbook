@@ -8,8 +8,6 @@ import sys
 import serial
 import redis
 
-# some const
-REDIS_HASH_KEY = 'ble:devices'
 
 # parse command line args
 parser = argparse.ArgumentParser()
@@ -35,11 +33,26 @@ try:
             logging.debug(f'rx message: {msg}')
             # parse serial message
             msg_as_dict = json.loads(msg)
-            # remove "addr" and add "receive_dt"
-            addr = msg_as_dict.pop('addr')
-            msg_as_dict['receive_dt'] = datetime.now().astimezone().isoformat()
-            # update redis hash
-            red_cli.hset(REDIS_HASH_KEY, addr, json.dumps(msg_as_dict))
+            # add "receive_dt"
+            receive_dt = datetime.now().astimezone().isoformat()
+            msg_as_dict['receive_dt'] = receive_dt
+            # try to find a BLE device name from its current device id
+            device_id = msg_as_dict['id']
+            device_name = None
+            hash_name = red_cli.hget('ble-names-by-ids', device_id)
+            if hash_name:
+                device_name = hash_name.decode()
+            # update redis json key
+            # priority to key name "ble-data-js:name" if name is set, else use "ble-data-js:id"
+            redis_key = f'ble-data-js:{device_name or device_id}'
+            redis_value = json.dumps(msg_as_dict)
+            logging.debug(f'redis set key {redis_key}: {redis_value}')
+            red_cli.set(redis_key, redis_value, ex=3600)
+            # when name is set for this id, remove old "ble-data-js:id" key
+            if device_name:
+                red_cli.delete(f'ble-data-js:{device_id}')
+            # update last seen redis hash
+            red_cli.hset(f'ble-last-seen-by-ids', device_id, receive_dt)
         except redis.RedisError as e:
             logging.warning(f'redis error: {e!r}')
         except (ValueError, KeyError) as e:
