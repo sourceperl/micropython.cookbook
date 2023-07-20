@@ -7,7 +7,7 @@ from lib.neopixel import Neopixel
 
 # some const
 PIX_MACHINE_ID = 0
-PIX_PIN = 15
+PIX_PIN = 17
 PIX_NB = 6
 RED = 1
 ORANGE = 2
@@ -44,6 +44,7 @@ async def tl_task():
             pix.set_pixel(3, RGB_RED if st_tl2 == RED else RGB_OFF)
             pix.set_pixel(4, RGB_ORANGE if st_tl2 == ORANGE else RGB_OFF)
             pix.set_pixel(5, RGB_GREEN if st_tl2 == GREEN else RGB_OFF)
+            pix.show()
             # wait next step
             await aio.sleep(seq_delay)
 
