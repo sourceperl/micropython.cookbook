@@ -1,0 +1,15 @@
+- set serial baudrate: valid 300-115200 bauds (default is 9600)
+    > baudrate 9600
+
+- set serial parity: can be N (none), E is even, O is odd
+    > parity N
+
+- set serial stop bit: can be 1 (default) or 2 stop bits
+    > stop 1
+
+- set serial end of frame detection value in ms (valid 0-1000 ms)
+    > eof_ms 10
+
+- start a modbus frame dump of size frames with command: dump(size)
+    > # dump 10 frames, exit with CTRL+C if need
+    > spy.dump(10)
