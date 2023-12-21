@@ -7,6 +7,7 @@ from lib.modbus import ModbusFrame
 
 # some const
 VERSION = '0.0.1'
+FRAMES_BUF_SIZE = 100
 
 
 # some class
@@ -29,22 +30,22 @@ class ThreadFlag:
 SerialParams = namedtuple('SerialParams', ('baudrate', 'parity', 'bits', 'stop', 'eof_ms'))
 
 
-class Flags:
-    spy_job_exit = ThreadFlag()
-    spy_job_reload = ThreadFlag()
+class SpyFlags:
+    job_exit = ThreadFlag()
+    job_reload = ThreadFlag()
 
 
-class Share:
-    # Share lock
+class SpyConf:
     lock = _thread.allocate_lock()
-    # serial configuration
-    spy_job_sp = SerialParams(9600, None, 8, 1, 1)
-    # frame buffer
-    spy_frame_l = []
+    serial = SerialParams(9600, None, 8, 1, 1)
+
+
+class SpyData:
+    lock = _thread.allocate_lock()
+    frames_l = []
 
 
 class SerialConf:
-    
     def __init__(self):
         # private
         self._baudrate = 9600
@@ -59,12 +60,11 @@ class SerialConf:
 
     @baudrate.setter
     def baudrate(self, value: int):
-        if 300 <= value <= 115_200:
-            self._baudrate = value
-            self.update_eof()
-            self.on_change()
-        else:
-            raise ValueError('bad value for baudrate (allowed value between 300 and 115200)')
+        if not 300 <= value <= 115_200:
+            raise ValueError
+        self._baudrate = value
+        self.update_eof()
+        self.on_change()
 
     @property
     def parity_as_str(self):
@@ -77,7 +77,7 @@ class SerialConf:
             self.update_eof()
             self.on_change()
         except KeyError:
-            raise ValueError('bad value for parity (allowed values: N, E or O)')
+            raise ValueError
 
     @property
     def parity_as_int(self):
@@ -85,12 +85,11 @@ class SerialConf:
 
     @parity_as_int.setter
     def parity_as_int(self, value: int):
-        if value in [None, 0, 1]:
-            self._parity = value
-            self.update_eof()
-            self.on_change()
-        else:
-            raise ValueError('bad value for parity (allowed values: None, 0 or 1)')
+        if value not in [None, 0, 1]:
+            raise ValueError
+        self._parity = value
+        self.update_eof()
+        self.on_change()
 
     @property
     def bits(self):
@@ -102,12 +101,11 @@ class SerialConf:
 
     @stop.setter
     def stop(self, value: int):
-        if value in [1, 2]:
-            self._stop = value
-            self.update_eof()
-            self.on_change()
-        else:
-            raise ValueError('bad value for stop (allowed values: 1 and 2)')
+        if value not in [1, 2]:
+            raise ValueError
+        self._stop = value
+        self.update_eof()
+        self.on_change()
 
     @property
     def eof_ms(self):
@@ -115,14 +113,10 @@ class SerialConf:
 
     @eof_ms.setter
     def eof_ms(self, value: int):
-        try:
-            value = int(value)
-            if not 0 < value < 1000:
-                raise ValueError
-            self._eof_ms = value
-            self.on_change()
-        except ValueError:
-            raise ValueError('bad value for eof (valid between 1 and 999 ms)')
+        if not 0 < value < 1000:
+            raise ValueError
+        self._eof_ms = value
+        self.on_change()
 
     @property
     def as_namedtuple(self):
@@ -153,10 +147,12 @@ class SpyCli(Cmd):
         self.serial_cnf.on_change = self.on_serial_change
 
     def on_serial_change(self):
-        print("serial change")
-        with Share.lock:
-            Share.spy_job_sp = self.serial_cnf.as_namedtuple
-        Flags.spy_job_reload.set()
+        print("call on_serial_change()")
+        # load new serial conf
+        with SpyConf.lock:
+            SpyConf.serial = self.serial_cnf.as_namedtuple
+        # notify spy job to reload serial conf
+        SpyFlags.job_reload.set()
 
     @property
     def prompt(self):
@@ -170,13 +166,11 @@ class SpyCli(Cmd):
         if arg:
             try:
                 self.serial_cnf.baudrate = int(arg)
-                self.stdout.write(
-                    f'baudrate set to {self.serial_cnf.baudrate} bauds\n')
+                self.stdout.write(f'baudrate set to {self.serial_cnf.baudrate} bauds\n')
             except ValueError:
                 self.stdout.write(f'unable to set baudrate\n')
         else:
-            self.stdout.write(
-                f'baudrate set to {self.serial_cnf.baudrate} bauds\n')
+            self.stdout.write(f'baudrate set to {self.serial_cnf.baudrate} bauds\n')
 
     def help_baudrate(self):
         self.stdout.write('set the baudrate of the spied line (example: "baudrate 115200")\n')
@@ -192,16 +186,14 @@ class SpyCli(Cmd):
                 f'parity set to {self.serial_cnf.parity_as_str}\n')
 
     def help_parity(self):
-        self.stdout.write(
-            'set the parity to N, E or O (example: "parity E")\n')
+        self.stdout.write('set the parity to N, E or O (example: "parity E")\n')
 
     def do_stop(self, arg: str):
         if arg:
             try:
                 self.serial_cnf.stop = int(arg.strip())
             except ValueError:
-                self.stdout.write(
-                    f'unable to set the number of stop bit(s) (allowed values: 1 or 2)\n')
+                self.stdout.write(f'unable to set the number of stop bit(s) (allowed values: 1 or 2)\n')
         else:
             self.stdout.write(f'number of stop bit(s) set to {self.serial_cnf.stop}\n')
 
@@ -218,13 +210,12 @@ class SpyCli(Cmd):
             self.stdout.write(f'eof set to {self.serial_cnf.eof_ms} ms\n')
 
     def help_eof(self):
-        self.stdout.write(
-            'set the end of frame silent delay in ms (example: "eof 3")\n')
+        self.stdout.write('set the end of frame silent delay in ms (example: "eof 3")\n')
 
     def do_dump(self, _arg):
-        with Share.lock:
-            frame_dump_l = Share.spy_frame_l.copy()
-        for idx, frame in enumerate(frame_dump_l):
+        with SpyData.lock:
+            dump_l = SpyData.frames_l.copy()
+        for idx, frame in enumerate(dump_l):
             # format dump message
             crc_str = ('ERR', 'OK')[frame.crc_is_valid]
             # print dump message
@@ -242,34 +233,37 @@ class SpyCli(Cmd):
     def help_help(self):
         self.stdout.write('show help message about available commands\n')
 
+    def do_start(self, _arg):
+        with SpyConf.lock:
+            SpyConf.serial = self.serial_cnf.as_namedtuple
+
 
 def core0_task():
     """ start user cli on core0 """
     try:
         SpyCli().cmdloop()
     except KeyboardInterrupt:
-        Flags.spy_job_exit.set()
+        SpyFlags.job_exit.set()
 
 
 def core1_task():
     """ start continuous spy job on core1 """
     # task init
-    FRAME_LIST_SIZE = 20
     UART_ID = 1
     TX_PIN = Pin(4, Pin.IN)
     RX_PIN = Pin(5, Pin.IN)
     # task loop
     while True:
         # reset reload flag
-        Flags.spy_job_reload.unset()
+        SpyFlags.job_reload.unset()
         # load UART conf
-        with Share.lock:
+        with SpyConf.lock:
             uart = UART(UART_ID, tx=TX_PIN, rx=RX_PIN,
-                        baudrate=Share.spy_job_sp.baudrate,
-                        bits=Share.spy_job_sp.bits,
-                        parity=Share.spy_job_sp.parity,
-                        stop=Share.spy_job_sp.stop,
-                        timeout_char=Share.spy_job_sp.eof_ms,
+                        baudrate=SpyConf.serial.baudrate,
+                        bits=SpyConf.serial.bits,
+                        parity=SpyConf.serial.parity,
+                        stop=SpyConf.serial.stop,
+                        timeout_char=SpyConf.serial.eof_ms,
                         rxbuf=256, timeout=0)
         # frame recv loop
         while True:
@@ -277,17 +271,17 @@ def core1_task():
             recv_frame = uart.read(256)
             # when frame is set
             if recv_frame:
-                with Share.lock:
-                    if len(Share.spy_frame_l) >= FRAME_LIST_SIZE:
-                        Share.spy_frame_l.pop(0)
-                    Share.spy_frame_l.append(ModbusFrame(recv_frame))
+                with SpyData.lock:
+                    if len(SpyData.frames_l) >= FRAMES_BUF_SIZE:
+                        SpyData.frames_l.pop(0)
+                    SpyData.frames_l.append(ModbusFrame(recv_frame))
             # exit recv loop on job exit or reload request
-            if Flags.spy_job_exit.is_set() or Flags.spy_job_reload.is_set():
+            if SpyFlags.job_exit.is_set() or SpyFlags.job_reload.is_set():
                 break
         # deinit UART
         uart.deinit()
         # exit on request (avoid OSError: core1 in use )
-        if Flags.spy_job_exit.is_set():
+        if SpyFlags.job_exit.is_set():
             break
 
 
