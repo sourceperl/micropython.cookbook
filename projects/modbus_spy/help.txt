@@ -8,8 +8,8 @@
     > stop 1
 
 - set serial end of frame detection value in ms (valid 0-1000 ms)
-    > eof_ms 10
+    > eof 10
 
-- start a modbus frame dump of size frames with command: dump(size)
-    > # dump 10 frames, exit with CTRL+C if need
-    > spy.dump(10)
+- view modbus frame dump of size frames
+    > # dump 10 frames (this is default)
+    > dump 10

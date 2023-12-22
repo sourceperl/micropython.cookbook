@@ -1,6 +1,105 @@
 import _thread
 
 
+class SerialConf:
+    class Params:
+        def __init__(self) -> None:
+            self.baudrate: int = 9600
+            self.parity: int = None
+            self.bits: int = 8
+            self.stop = 1
+            self.eof_ms: int = 4
+
+    def __init__(self):
+        # private
+        self._params = self.Params()
+
+    @property
+    def params(self):
+        return self._params
+
+    @property
+    def baudrate(self):
+        return self._params.baudrate
+
+    @baudrate.setter
+    def baudrate(self, value: int):
+        if not 300 <= value <= 115_200:
+            raise ValueError
+        self._params.baudrate = value
+        self._on_write()
+
+    @property
+    def parity_as_str(self):
+        return {None: 'N', 0: 'E', 1: 'O'}[self._params.parity]
+
+    @parity_as_str.setter
+    def parity_as_str(self, value: str):
+        try:
+            parity_char = {'N': None, 'E': 0, 'O': 1}[value]
+            self._params.parity = parity_char
+            self._on_write()
+        except KeyError:
+            raise ValueError
+
+    @property
+    def parity_as_int(self):
+        return self._params.parity
+
+    @parity_as_int.setter
+    def parity_as_int(self, value: int):
+        if value not in [None, 0, 1]:
+            raise ValueError
+        self._params.parity = value
+        self._on_write()
+
+    @property
+    def bits(self):
+        return self._params.bits
+
+    @property
+    def stop(self):
+        return self._params.stop
+
+    @stop.setter
+    def stop(self, value: int):
+        if value not in [1, 2]:
+            raise ValueError
+        self._params.stop = value
+        self._on_write()
+
+    @property
+    def eof_ms(self):
+        return self._params.eof_ms
+
+    @eof_ms.setter
+    def eof_ms(self, value: int):
+        if not 0 < value < 1000:
+            raise ValueError
+        self._params.eof_ms = value
+        self._on_write(skip_eof=True)
+
+    def _on_write(self, skip_eof=False):
+        if not skip_eof:
+            self._update_eof()
+        self.on_change()
+
+    def _update_eof(self):
+        # auto update end of frame delay (eof) on property write
+        # eof = silence on rx line > 3.5 * byte transmit time
+        byte_len = 10 + self._params.stop
+        if self._params.parity is not None:
+            byte_len += 1
+        byte_tx_ms = 1000 * byte_len / self._params.baudrate
+        self.params.eof_ms = max(round(3.5 * byte_tx_ms), 1)
+
+    def on_change(self):
+        pass
+
+    def __str__(self) -> str:
+        return f'{self.baudrate},{self.parity_as_str},{self.bits},{self.stop}'
+
+
 class ThreadFlag:
     """ A thread safe flag class """
 
