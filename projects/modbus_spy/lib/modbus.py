@@ -1,4 +1,5 @@
 import struct
+import time
 
 
 # some consts
@@ -21,6 +22,8 @@ GET_ALL_HOURLY_LINE_DATA = 0x66
 GET_ALL_DAILY_LINE_DATA = 0x67
 GET_ALL_GAS_AUX_HOURLY_STATION_DATA = 0x68
 GET_DETAILED_HOURLY_STATION_DATA = 0x69
+# misc
+FLX_ORIGIN_TS = 189302400
 
 
 # some functions
@@ -137,13 +140,13 @@ class FrameAnalyzer:
                               WRITE_SINGLE_COIL: self._msg_write_single_coil,
                               WRITE_SINGLE_REGISTER: self._msg_write_single_reg,
                               WRITE_MULTIPLE_COILS: self._msg_write_multiple_coils,
-                              WRITE_MULTIPLE_REGISTERS: self._msg_write_multiple_registers,}
-                              #GET_ALL_HOURLY_STATION_DATA: self._msg_hourly_station_data,
-                              #GET_ALL_DAILY_STATION_DATA: self._msg_daily_station_data,
-                              #GET_ALL_HOURLY_LINE_DATA: self._msg_hourly_line_data,
-                              #GET_ALL_DAILY_LINE_DATA: self._msg_daily_line_data,
-                              #GET_ALL_GAS_AUX_HOURLY_STATION_DATA: self._msg_hourly_station_data,
-                              #GET_DETAILED_HOURLY_STATION_DATA: self._msg_hourly_station_data}
+                              WRITE_MULTIPLE_REGISTERS: self._msg_write_multiple_registers,
+                              GET_ALL_HOURLY_STATION_DATA: self._msg_hourly_station_data,
+                              GET_ALL_DAILY_STATION_DATA: self._msg_daily_station_data,
+                              GET_ALL_HOURLY_LINE_DATA: self._msg_hourly_line_data,
+                              GET_ALL_DAILY_LINE_DATA: self._msg_daily_line_data,
+                              GET_ALL_GAS_AUX_HOURLY_STATION_DATA: self._msg_hourly_station_data,
+                              GET_DETAILED_HOURLY_STATION_DATA: self._msg_hourly_station_data}
         self._func_names = {READ_COILS: 'read coils',
                             READ_DISCRETE_INPUTS: 'read discrete inputs',
                             READ_HOLDING_REGISTERS: 'read holding registers',
@@ -347,8 +350,9 @@ class FrameAnalyzer:
             # request
             try:
                 hour_id, b_qty = struct.unpack('>IB', self.frm_now.pdu[1:6])
-                hour_dt = FLX_ORIGIN_DT + timedelta(hours=hour_id)
-                msg_pdu = f"hourly data from {hour_dt.strftime('%Hh %d/%m/%Y')} (h_id={hour_id}, b_qty={b_qty})"
+                hour_ts = FLX_ORIGIN_TS + hour_id * 3600
+                year, month, mday, hour = time.gmtime(hour_ts)[:4]
+                msg_pdu = f"hourly data from {hour}h {mday:02d}/{month:02d}/{year:04d} (h_id={hour_id}, b_qty={b_qty})"
             except (struct.error, OverflowError) as e:
                 msg_pdu = f'bad PDU format (error: "{e}")'
         else:
@@ -372,8 +376,9 @@ class FrameAnalyzer:
             # request
             try:
                 day_id, b_qty = struct.unpack('>IB', self.frm_now.pdu[1:6])
-                day_dt = FLX_ORIGIN_DT + timedelta(days=day_id)
-                msg_pdu = f"daily data from {day_dt.strftime('%d/%m/%Y')} (d_id={day_id}, b_qty={b_qty})"
+                day_ts = FLX_ORIGIN_TS + day_id * 86400
+                year, month, mday = time.gmtime(day_ts)[:3]
+                msg_pdu = f"daily data from {mday:02d}/{month:02d}/{year:04d} (d_id={day_id}, b_qty={b_qty})"
             except (struct.error, OverflowError) as e:
                 msg_pdu = f'bad PDU format (error: "{e}")'
         else:
@@ -397,8 +402,9 @@ class FrameAnalyzer:
             # request
             try:
                 hour_id, line_id, b_qty = struct.unpack('>IBB', self.frm_now.pdu[1:7])
-                hour_dt = FLX_ORIGIN_DT + timedelta(hours=hour_id)
-                msg_pdu = f"hourly data for line {line_id} from {hour_dt.strftime('%Hh %d/%m/%Y')} (h_id={hour_id}, b_qty={b_qty})"
+                hour_ts = FLX_ORIGIN_TS + hour_id * 3600
+                year, month, mday, hour = time.gmtime(hour_ts)[:4]
+                msg_pdu = f"hourly data for line {line_id} from {mday:02d}/{month:02d}/{year:04d} (h_id={hour_id}, b_qty={b_qty})"
             except (struct.error, OverflowError) as e:
                 msg_pdu = f'bad PDU format (error: "{e}")'
         else:
@@ -422,8 +428,9 @@ class FrameAnalyzer:
             # request
             try:
                 day_id, line_id, b_qty = struct.unpack('>IBB', self.frm_now.pdu[1:7])
-                day_dt = FLX_ORIGIN_DT + timedelta(days=day_id)
-                msg_pdu = f"daily data for line {line_id} from {day_dt.strftime('%d/%m/%Y')} (d_id={day_id}, b_qty={b_qty})"
+                day_ts = FLX_ORIGIN_TS + day_id * 86400
+                year, month, mday = time.gmtime(day_ts)[:3]
+                msg_pdu = f"daily data for line {line_id} from {mday:02d}/{month:02d}/{year:04d} (d_id={day_id}, b_qty={b_qty})"
             except (struct.error, OverflowError) as e:
                 msg_pdu = f'bad PDU format (error: "{e}")'
         else:
