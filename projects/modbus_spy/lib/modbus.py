@@ -181,7 +181,7 @@ class FrameAnalyzer:
                 if cls._is_valid_tag(tag_name):
                     tags_d[tag_name] = tag_value
             return tags_d
-        except (struct.error, UnicodeDecodeError) as e:
+        except (ValueError, UnicodeError) as e:
             raise FrameAnalyzer._InternalError(e)
 
     @classmethod
@@ -220,7 +220,7 @@ class FrameAnalyzer:
             try:
                 bit_addr, bit_nb = struct.unpack('>HH', self.frm_now.pdu[1:])
                 msg_pdu = f'read {bit_nb} bit(s) at @ 0x{bit_addr:04x} ({bit_addr})'
-            except struct.error:
+            except ValueError:
                 msg_pdu = 'bad PDU format'
         else:
             # response
@@ -234,7 +234,7 @@ class FrameAnalyzer:
                         bits_l.append('1' if (byte_val & (1 << n)) else '0')
                 bits_str = ', '.join(bits_l)
                 msg_pdu = f'return {len(bits_l)} bit(s) (read bytes={read_bytes}) data: [{bits_str}]'
-            except struct.error:
+            except ValueError:
                 msg_pdu = 'bad PDU format'
         # format message
         return f'{self.frm_now.is_request_as_str}: {msg_pdu}'
@@ -249,7 +249,7 @@ class FrameAnalyzer:
             try:
                 reg_addr, regs_nb = struct.unpack('>HH', self.frm_now.pdu[1:])
                 msg_pdu = f'read {regs_nb} register(s) at @ 0x{reg_addr:04x} ({reg_addr})'
-            except struct.error:
+            except ValueError:
                 msg_pdu = 'bad PDU format'
         else:
             # response
@@ -258,7 +258,7 @@ class FrameAnalyzer:
                 regs_l = struct.unpack(f'>{read_bytes // 2}H', self.frm_now.pdu[2:])
                 regs_str = ', '.join([f'{r:d}' for r in regs_l])
                 msg_pdu = f'return {len(regs_l)} register(s) (read bytes={read_bytes}) data: [{regs_str}]'
-            except struct.error:
+            except ValueError:
                 msg_pdu = 'bad PDU format'
         # format message
         return f'{self.frm_now.is_request_as_str}: {msg_pdu}'
@@ -271,7 +271,7 @@ class FrameAnalyzer:
             msg_pdu = f'write {bit_value_str} to coil at @ 0x{bit_addr:04x} ({bit_addr})'
             if not self.frm_now.is_request:
                 msg_pdu += ' OK'
-        except struct.error:
+        except ValueError:
             msg_pdu = 'bad PDU format'
         # format message
         return f'{self.frm_now.is_request_as_str}: {msg_pdu}'
@@ -283,7 +283,7 @@ class FrameAnalyzer:
             msg_pdu = f'write {reg_value} to register at @ 0x{reg_addr:04x} ({reg_addr})'
             if not self.frm_now.is_request:
                 msg_pdu += ' OK'
-        except struct.error:
+        except ValueError:
             msg_pdu = 'bad PDU format'
         # format message
         return f'{self.frm_now.is_request_as_str}: {msg_pdu}'
@@ -305,14 +305,14 @@ class FrameAnalyzer:
                         bits_l.append('1' if (byte_val & (1 << n)) else '0')
                 bits_str = ', '.join(bits_l)
                 msg_pdu = f'write {bits_nb} bit(s) at @ 0x{bit_addr:04x} ({bit_addr}) data: [{bits_str}]'
-            except struct.error:
+            except ValueError:
                 msg_pdu = 'bad PDU format'
         else:
             # response
             try:
                 bit_addr, bits_nb = struct.unpack('>HH', self.frm_now.pdu[1:5])
                 msg_pdu = f'write {bits_nb} bit(s) at @ 0x{bit_addr:04x} ({bit_addr}) OK'
-            except struct.error:
+            except ValueError:
                 msg_pdu = 'bad PDU format'
         # format message
         return f'{self.frm_now.is_request_as_str}: {msg_pdu}'
@@ -329,14 +329,14 @@ class FrameAnalyzer:
                 regs_l = struct.unpack(f'>{bytes_nb//2}H', self.frm_now.pdu[6:])
                 regs_str = ', '.join([str(b) for b in regs_l])
                 msg_pdu = f'write {regs_nb} register(s) at @ 0x{reg_addr:04x} ({reg_addr}) data: [{regs_str}]'
-            except struct.error:
+            except ValueError:
                 msg_pdu = 'bad PDU format'
         else:
             # response
             try:
                 reg_addr, regs_nb = struct.unpack('>HH', self.frm_now.pdu[1:5])
                 msg_pdu = f'write {regs_nb} register(s) at @ 0x{reg_addr:04x} ({reg_addr}) OK'
-            except struct.error:
+            except ValueError:
                 msg_pdu = 'bad PDU format'
         # format message
         return f'{self.frm_now.is_request_as_str}: {msg_pdu}'
@@ -353,7 +353,7 @@ class FrameAnalyzer:
                 hour_ts = FLX_ORIGIN_TS + hour_id * 3600
                 year, month, mday, hour = time.gmtime(hour_ts)[:4]
                 msg_pdu = f"hourly data from {hour}h {mday:02d}/{month:02d}/{year:04d} (h_id={hour_id}, b_qty={b_qty})"
-            except (struct.error, OverflowError) as e:
+            except (ValueError, OverflowError) as e:
                 msg_pdu = f'bad PDU format (error: "{e}")'
         else:
             # response
@@ -379,7 +379,7 @@ class FrameAnalyzer:
                 day_ts = FLX_ORIGIN_TS + day_id * 86400
                 year, month, mday = time.gmtime(day_ts)[:3]
                 msg_pdu = f"daily data from {mday:02d}/{month:02d}/{year:04d} (d_id={day_id}, b_qty={b_qty})"
-            except (struct.error, OverflowError) as e:
+            except (ValueError, OverflowError) as e:
                 msg_pdu = f'bad PDU format (error: "{e}")'
         else:
             # response
@@ -405,7 +405,7 @@ class FrameAnalyzer:
                 hour_ts = FLX_ORIGIN_TS + hour_id * 3600
                 year, month, mday, hour = time.gmtime(hour_ts)[:4]
                 msg_pdu = f"hourly data for line {line_id} from {mday:02d}/{month:02d}/{year:04d} (h_id={hour_id}, b_qty={b_qty})"
-            except (struct.error, OverflowError) as e:
+            except (ValueError, OverflowError) as e:
                 msg_pdu = f'bad PDU format (error: "{e}")'
         else:
             # response
@@ -431,7 +431,7 @@ class FrameAnalyzer:
                 day_ts = FLX_ORIGIN_TS + day_id * 86400
                 year, month, mday = time.gmtime(day_ts)[:3]
                 msg_pdu = f"daily data for line {line_id} from {mday:02d}/{month:02d}/{year:04d} (d_id={day_id}, b_qty={b_qty})"
-            except (struct.error, OverflowError) as e:
+            except (ValueError, OverflowError) as e:
                 msg_pdu = f'bad PDU format (error: "{e}")'
         else:
             # response
