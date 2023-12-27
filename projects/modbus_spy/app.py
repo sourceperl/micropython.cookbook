@@ -208,28 +208,68 @@ class App:
         self._update_ps()
 
     def dump(self, n: int = 10):
-        # copy requested values from spy job
-        with self.spy_job.data as data:
-            dump_l = data.frames_l[-n:].copy()
-        # dump it
-        for idx, frame in enumerate(dump_l):
-            # format dump message
-            crc_str = ('ERR', 'OK')[frame.crc_ok]
-            # print dump message
-            print(f'[{idx:>3d}/{len(frame):>3}/{crc_str:<3}] {frame}')
+        try:
+            # copy requested values from spy job
+            with self.spy_job.data as data:
+                dump_l = data.frames_l[-n:].copy()
+            # dump it
+            for idx, frame in enumerate(dump_l):
+                # format dump message
+                crc_str = ('ERR', 'OK')[frame.crc_ok]
+                # print dump message
+                print(f'[{idx:>3d}/{len(frame):>3}/{crc_str:<3}] {frame}')
+        except KeyboardInterrupt:
+            pass
+
+    def _dump_rt(self):
+        try:
+            while True:
+                # copy requested values from spy job
+                with self.spy_job.data as data:
+                    dump_l = data.frames_l.copy()
+                    data.frames_l.clear()
+                # dump it
+                for frame in dump_l:
+                    # format dump message
+                    crc_str = ('ERR', 'OK')[frame.crc_ok]
+                    # print dump message
+                    print(f'[{len(frame):>3}/{crc_str:<3}] {frame}')
+        except KeyboardInterrupt:
+            pass
 
     def analyze(self, n: int = 10):
-        # copy requested values from spy job
-        with self.spy_job.data as data:
-            dump_l = data.frames_l[-n:].copy()
-        # analyze frames
-        fa_session = FrameAnalyzer()
-        for idx, frame in enumerate(dump_l):
-            # format dump message
-            crc_str = ('ERR', 'OK')[frame.crc_ok]
-            dec_str = fa_session.analyze(frame.raw)
-            # print dump message
-            print(f'[{idx:>3d}/{len(frame):>3}/{crc_str:<3}] {dec_str}')
+        try:
+            # copy requested values from spy job
+            with self.spy_job.data as data:
+                dump_l = data.frames_l[-n:].copy()
+            # analyze frames
+            fa_session = FrameAnalyzer()
+            for idx, frame in enumerate(dump_l):
+                # format dump message
+                crc_str = ('ERR', 'OK')[frame.crc_ok]
+                dec_str = fa_session.analyze(frame.raw)
+                # print dump message
+                print(f'[{idx:>3d}/{len(frame):>3}/{crc_str:<3}] {dec_str}')
+        except KeyboardInterrupt:
+            pass
+
+    def _analyze_rt(self):
+        try:
+            while True:
+                # copy requested values from spy job
+                with self.spy_job.data as data:
+                    dump_l = data.frames_l.copy()
+                    data.frames_l.clear()
+                # analyze frames
+                fa_session = FrameAnalyzer()
+                for frame in dump_l:
+                    # format dump message
+                    crc_str = ('ERR', 'OK')[frame.crc_ok]
+                    dec_str = fa_session.analyze(frame.raw)
+                    # print dump message
+                    print(f'[{len(frame):>3}/{crc_str:<3}] {dec_str}')
+        except KeyboardInterrupt:
+            pass
 
     def save(self):
         # extract current configuration
@@ -244,6 +284,10 @@ class App:
             f.write(json.dumps(conf_d))
 
 
+# overclock from default 125 MHz to 250 MHz
+# not essential, but improve responsiveness on the USB interface
+machine.freq(250_000_000)
+
 # create app instance
 spy_job = SpyJob()
 app = App(spy_job=spy_job)
@@ -256,3 +300,7 @@ on = app.on
 off = app.off
 clear = app.clear
 save = app.save
+
+# experimental
+_dump_rt = app._dump_rt
+_analyze_rt = app._analyze_rt
