@@ -228,7 +228,7 @@ class CliJob:
             with self.spy_job.data as data:
                 dump_l = data.frames_l[-frame_nb:].copy()
             # dump it
-            for idx, frame in enumerate(reversed(dump_l)):
+            for idx, frame in enumerate(dump_l):
                 # format dump message
                 crc_str = ('ERR', 'OK')[frame.crc_ok]
                 # print dump message
@@ -252,7 +252,7 @@ class CliJob:
                 dump_l = data.frames_l[-frame_nb:].copy()
             # analyze frames
             fa_session = FrameAnalyzer()
-            for idx, frame in enumerate(reversed(dump_l)):
+            for idx, frame in enumerate(dump_l):
                 # format dump message
                 crc_str = ('ERR', 'OK')[frame.crc_ok]
                 dec_str = fa_session.analyze(frame.raw)
