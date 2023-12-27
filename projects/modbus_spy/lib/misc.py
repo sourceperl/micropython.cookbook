@@ -25,7 +25,7 @@ class SerialConf:
     @baudrate.setter
     def baudrate(self, value: int):
         if not 300 <= value <= 115_200:
-            raise ValueError
+            raise ValueError('unable to set baudrate (allowed values between 300 and 115200 bauds)')
         self._params.baudrate = value
         self._on_write()
 
@@ -36,11 +36,12 @@ class SerialConf:
     @parity_as_str.setter
     def parity_as_str(self, value: str):
         try:
+            value = value.upper()
             parity_char = {'N': None, 'E': 0, 'O': 1}[value]
             self._params.parity = parity_char
             self._on_write()
-        except KeyError:
-            raise ValueError
+        except (KeyError, AttributeError):
+            raise ValueError("unable to set parity (allowed values are 'N', 'E' or 'O')")
 
     @property
     def parity_as_int(self):
@@ -49,7 +50,7 @@ class SerialConf:
     @parity_as_int.setter
     def parity_as_int(self, value: int):
         if value not in [None, 0, 1]:
-            raise ValueError
+            raise ValueError('unable to set parity (allowed values are None, 0 or 1)')
         self._params.parity = value
         self._on_write()
 
@@ -64,7 +65,7 @@ class SerialConf:
     @stop.setter
     def stop(self, value: int):
         if value not in [1, 2]:
-            raise ValueError
+            raise ValueError('unable to set the number of stop bit(s) (allowed values: 1 or 2)')
         self._params.stop = value
         self._on_write()
 
