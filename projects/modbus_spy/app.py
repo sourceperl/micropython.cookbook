@@ -3,7 +3,7 @@ import json
 import machine
 import sys
 from lib.misc import ThreadFlag, SerialConf
-from lib.modbus import FrameAnalyzer, ModbusRTUFrame
+from lib.modbus import FrameAnalyzer, frame_is_ok
 
 
 # some class
@@ -39,7 +39,6 @@ class SpyJob:
 
     def __init__(self) -> None:
         # flags
-        self.exit_flag = ThreadFlag()
         self.spy_on_flag = ThreadFlag()
         self.reload_flag = ThreadFlag()
         # conf
@@ -75,15 +74,12 @@ class SpyJob:
                         with self.data as data:
                             if len(data.frames_l) >= self.FRAMES_BUF_SIZE:
                                 data.frames_l.pop(0)
-                            data.frames_l.append(ModbusRTUFrame(recv_frame))
+                            data.frames_l.append(recv_frame)
                 # exit recv loop on job exit or reload request
-                if self.exit_flag.is_set() or self.reload_flag.is_set():
+                if self.reload_flag.is_set():
                     break
             # deinit UART
             uart.deinit()
-            # exit on request (avoid OSError: core1 in use )
-            if self.exit_flag.is_set():
-                break
 
 
 class App:
@@ -215,14 +211,17 @@ class App:
             # dump it
             for idx, frame in enumerate(dump_l):
                 # format dump message
-                crc_str = ('ERR', 'OK')[frame.crc_ok]
+                f_str = '-'.join(['%02X' % x for x in frame])
+                ok_str = ('ERR', 'OK')[frame_is_ok(frame)]
                 # print dump message
-                print(f'[{idx:>3d}/{len(frame):>3}/{crc_str:<3}] {frame}')
+                print(f'[{idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
         except KeyboardInterrupt:
             pass
 
     def _dump_rt(self):
         try:
+            # frame index
+            idx = 0
             while True:
                 # copy requested values from spy job
                 with self.spy_job.data as data:
@@ -231,9 +230,12 @@ class App:
                 # dump it
                 for frame in dump_l:
                     # format dump message
-                    crc_str = ('ERR', 'OK')[frame.crc_ok]
+                    f_str = '-'.join(['%02X' % x for x in frame])
+                    ok_str = ('ERR', 'OK')[frame_is_ok(frame)]
                     # print dump message
-                    print(f'[{len(frame):>3}/{crc_str:<3}] {frame}')
+                    print(f'[{idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
+                    # update frame index
+                    idx += 1
         except KeyboardInterrupt:
             pass
 
@@ -246,15 +248,17 @@ class App:
             fa_session = FrameAnalyzer()
             for idx, frame in enumerate(dump_l):
                 # format dump message
-                crc_str = ('ERR', 'OK')[frame.crc_ok]
-                dec_str = fa_session.analyze(frame.raw)
+                dec_str = fa_session.analyze(frame)
+                ok_str = ('ERR', 'OK')[fa_session.frm_now.is_valid]
                 # print dump message
-                print(f'[{idx:>3d}/{len(frame):>3}/{crc_str:<3}] {dec_str}')
+                print(f'[{idx:>3d}/{len(frame):>3}/{ok_str:<3}] {dec_str}')
         except KeyboardInterrupt:
             pass
 
     def _analyze_rt(self):
         try:
+            # frame index
+            idx = 0
             while True:
                 # copy requested values from spy job
                 with self.spy_job.data as data:
@@ -264,10 +268,12 @@ class App:
                 fa_session = FrameAnalyzer()
                 for frame in dump_l:
                     # format dump message
-                    crc_str = ('ERR', 'OK')[frame.crc_ok]
-                    dec_str = fa_session.analyze(frame.raw)
+                    dec_str = fa_session.analyze(frame)
+                    ok_str = ('ERR', 'OK')[fa_session.frm_now.is_valid]
                     # print dump message
-                    print(f'[{len(frame):>3}/{crc_str:<3}] {dec_str}')
+                    print(f'[{idx:>3d}/{len(frame):>3}/{ok_str:<3}] {dec_str}')
+                    # update frame index
+                    idx += 1
         except KeyboardInterrupt:
             pass
 

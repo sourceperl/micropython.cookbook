@@ -46,6 +46,13 @@ def crc16(frame: bytes) -> int:
     return crc
 
 
+def frame_is_ok(frame: bytes) -> bool:
+    """Return True if frame is valid.
+    i/e not too short and with a valid CRC
+    """
+    return len(frame) > 4 and crc16(frame) == 0
+
+
 # some class
 class ModbusRTUFrame:
     """ Modbus RTU frame container class. """
@@ -118,7 +125,6 @@ class ModbusRTUFrame:
     @property
     def as_hex(self) -> str:
         return '-'.join(['%02X' % x for x in self.raw])
-
 
 
 class FrameAnalyzer:
