@@ -8,7 +8,7 @@ class SerialConf:
             self.parity: int = None
             self.bits: int = 8
             self.stop = 1
-            self.eof_ms: int = 4
+            self.eof_ms: float = 4.0
 
     def __init__(self):
         # private
@@ -74,10 +74,10 @@ class SerialConf:
         return self._params.eof_ms
 
     @eof_ms.setter
-    def eof_ms(self, value: int):
-        if not 0 < value < 1000:
+    def eof_ms(self, value: float):
+        if not 0.0 < value < 1000.0:
             raise ValueError
-        self._params.eof_ms = value
+        self._params.eof_ms = round(value, 3)
         self._on_write(skip_eof=True)
 
     def _on_write(self, skip_eof=False):
@@ -88,11 +88,13 @@ class SerialConf:
     def _update_eof(self):
         # auto update end of frame delay (eof) on property write
         # eof = silence on rx line > 3.5 * byte transmit time
-        byte_len = 10 + self._params.stop
+        byte_len = 9 + self._params.stop
         if self._params.parity is not None:
             byte_len += 1
-        byte_tx_ms = 1000 * byte_len / self._params.baudrate
-        self.params.eof_ms = max(round(3.5 * byte_tx_ms), 1)
+        bit_rate_ms = 1000 / self._params.baudrate
+        byte_tx_ms = bit_rate_ms * byte_len
+        compute_eof_ms = 3.5 * byte_tx_ms
+        self.eof_ms = max(compute_eof_ms, 0.5)
 
     def on_change(self):
         pass
