@@ -55,23 +55,23 @@ class SniffJob:
         # data
         self.data = self.Data()
         # flags
-        self._recv_flag = ThreadFlag()
+        self._rcv_flag = ThreadFlag()
 
     @property
     def is_on(self):
-        return self._recv_flag.is_set()
+        return self._rcv_flag.is_set()
 
     def on(self):
-        self._recv_flag.set()
+        self._rcv_flag.set()
 
     def off(self):
-        self._recv_flag.unset()
+        self._rcv_flag.unset()
 
     def run(self):
         # task loop
         while True:
             # wait sniffer is turn on
-            while not self._recv_flag.is_set():
+            while not self._rcv_flag.is_set():
                 sleep_ms(100)
             # load UART conf
             with self.conf as conf:
@@ -92,19 +92,19 @@ class SniffJob:
             # init recv loop vars
             buf = bytearray(256)
             buf_s, _buf_s = 0, 0
-            rcv_t = 0
+            rcv_us = 0
             read_n = 0
             # skip first frame
             uart.read()
             # recv loop (keep this as fast as possible)
-            while self._recv_flag.is_set():
+            while self._rcv_flag.is_set():
                 # mark time of arrival
                 buf_s = uart.any()
                 if buf_s > _buf_s:
-                    rcv_t = ticks_us()
+                    rcv_us = ticks_us()
                 _buf_s = buf_s
                 # if data available and silence greater than EOF us -> read it
-                if buf_s and ticks_diff(ticks_us(), rcv_t) > eof_us:
+                if buf_s and ticks_diff(ticks_us(), rcv_us) > eof_us:
                     read_n = uart.readinto(buf, buf_s)
                 # on next cycle, try to add the last receive frame to frames list
                 # try an immediate lock acquire or skip and try later
