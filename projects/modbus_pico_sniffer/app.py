@@ -1,3 +1,9 @@
+"""
+RS-485 modbus RTU sniffer tool.
+
+Test on Raspberry Pico (overclock to 250 MHz) with micropython v1.21.0.
+"""
+
 import _thread
 import json
 import machine
@@ -16,7 +22,7 @@ _UART_RX_PIN = const(5)
 
 
 # some class
-class SpyJob:
+class SniffJob:
 
     class Conf:
         def __init__(self) -> None:
@@ -43,20 +49,30 @@ class SpyJob:
             self.lock.release()
 
     def __init__(self) -> None:
-        # flags
-        self.on_flag = ThreadFlag()
-        self.reload_flag = ThreadFlag()
         # conf
         self.conf = self.Conf()
-        self.conf.serial.on_change = lambda: self.reload_flag.set()
+        self.conf.serial.on_change = self.off
         # data
         self.data = self.Data()
+        # flags
+        self._recv_flag = ThreadFlag()
+
+    @property
+    def is_on(self):
+        return self._recv_flag.is_set()
+
+    def on(self):
+        self._recv_flag.set()
+
+    def off(self):
+        self._recv_flag.unset()
 
     def run(self):
         # task loop
         while True:
-            # reset reload flag
-            self.reload_flag.unset()
+            # wait sniffer is turn on
+            while not self._recv_flag.is_set():
+                sleep_ms(100)
             # load UART conf
             with self.conf as conf:
                 uart = machine.UART(_UART_ID,
@@ -70,36 +86,34 @@ class SpyJob:
                                     timeout_char=-1,
                                     rxbuf=256)
                 eof_us = round(conf.serial.eof_ms * 1000)
-            # init recv vars
+            # clear frames list
+            with self.data as data:
+                data.frames_l.clear()
+            # init recv loop vars
             buf = bytearray(256)
             buf_s, _buf_s = 0, 0
             rcv_t = 0
             read_n = 0
             # skip first frame
             uart.read()
-            # recv loop
-            while True:
-                # if spy mode is turn on
-                if self.on_flag.is_set():
-                    # mark time of arrival
-                    buf_s = uart.any()
-                    if buf_s > _buf_s:
-                        rcv_t = ticks_us()
-                    _buf_s = buf_s
-                    # if data available and silence greater than EOF us -> read it
-                    if buf_s and ticks_diff(ticks_us(), rcv_t) > eof_us:
-                        read_n = uart.readinto(buf, buf_s)
-                    # on next cycle, try to add the last receive frame to frames list
-                    # try an immediate lock acquire or skip and try later
-                    elif read_n and self.data.lock.acquire(False):
-                        if len(self.data.frames_l) >= _BUF_SIZE:
-                            self.data.frames_l.pop(0)
-                        self.data.frames_l.append(buf[:read_n])
-                        self.data.lock.release()
-                        read_n = 0
-                # exit recv loop on job exit or reload request
-                if self.reload_flag.is_set():
-                    break
+            # recv loop (keep this as fast as possible)
+            while self._recv_flag.is_set():
+                # mark time of arrival
+                buf_s = uart.any()
+                if buf_s > _buf_s:
+                    rcv_t = ticks_us()
+                _buf_s = buf_s
+                # if data available and silence greater than EOF us -> read it
+                if buf_s and ticks_diff(ticks_us(), rcv_t) > eof_us:
+                    read_n = uart.readinto(buf, buf_s)
+                # on next cycle, try to add the last receive frame to frames list
+                # try an immediate lock acquire or skip and try later
+                elif read_n and self.data.lock.acquire(False):
+                    if len(self.data.frames_l) >= _BUF_SIZE:
+                        self.data.frames_l.pop(0)
+                    self.data.frames_l.append(buf[:read_n])
+                    self.data.lock.release()
+                    read_n = 0
             # deinit UART
             uart.deinit()
 
@@ -115,13 +129,13 @@ class App:
 
         @property
         def baudrate(self):
-            with self.app.spy_job.conf as conf:
+            with self.app.sniff_job.conf as conf:
                 return conf.serial.baudrate
 
         @baudrate.setter
         def baudrate(self, value: int):
             try:
-                with self.app.spy_job.conf as conf:
+                with self.app.sniff_job.conf as conf:
                     conf.serial.baudrate = value
                 self.app._update_ps()
             except ValueError as e:
@@ -129,13 +143,13 @@ class App:
 
         @property
         def parity(self):
-            with self.app.spy_job.conf as conf:
+            with self.app.sniff_job.conf as conf:
                 return conf.serial.parity_as_str
 
         @parity.setter
         def parity(self, value: str):
             try:
-                with self.app.spy_job.conf as conf:
+                with self.app.sniff_job.conf as conf:
                     conf.serial.parity_as_str = value
                 self.app._update_ps()
             except ValueError as e:
@@ -143,13 +157,13 @@ class App:
 
         @property
         def eof_ms(self):
-            with self.app.spy_job.conf as conf:
+            with self.app.sniff_job.conf as conf:
                 return conf.serial.eof_ms
 
         @eof_ms.setter
         def eof_ms(self, value: float):
             try:
-                with self.app.spy_job.conf as conf:
+                with self.app.sniff_job.conf as conf:
                     conf.serial.eof_ms = round(value, 3)
                 self.app._update_ps()
             except ValueError as e:
@@ -157,29 +171,29 @@ class App:
 
         @property
         def stop(self):
-            with self.app.spy_job.conf as conf:
+            with self.app.sniff_job.conf as conf:
                 return conf.serial.stop
 
         @stop.setter
         def stop(self, value: int):
             try:
-                with self.app.spy_job.conf as conf:
+                with self.app.sniff_job.conf as conf:
                     conf.serial.stop = value
                 self.app._update_ps()
             except ValueError as e:
                 print(e)
 
-    def __init__(self, spy_job: SpyJob) -> None:
-        # init spy job
-        self.spy_job = spy_job
+    def __init__(self, sniff_job: SniffJob) -> None:
+        # init sniff job
+        self.sniff_job = sniff_job
         # a link to serial params
         self.serial = self.AppSerial(self)
-        # launch the spy job on second core
-        _thread.start_new_thread(self.spy_job.run, ())
+        # launch the sniff job on second core
+        _thread.start_new_thread(self.sniff_job.run, ())
         # load initial values
         self._startup_load()
-        # turn on spy at startup
-        self.spy_job.on_flag.set()
+        # turn on sniff at startup
+        self.sniff_job.on()
         # init
         self._update_ps()
 
@@ -189,46 +203,44 @@ class App:
             # load and decode json
             conf_d = json.load(open(self.JS_CONF_FILE))
             serial_d = conf_d['serial']
-            # apply it to spy job
-            with self.spy_job.conf as conf:
+            # apply it to sniff job
+            with self.sniff_job.conf as conf:
                 conf.serial.baudrate = serial_d.get('baudrate', conf.serial.baudrate)
                 conf.serial.parity_as_str = serial_d.get('parity', conf.serial.parity_as_str)
                 conf.serial.stop = serial_d.get('stop', conf.serial.stop)
                 conf.serial.eof_ms = serial_d.get('eof_ms', conf.serial.eof_ms)
-            # reload spy job
-            self.spy_job.reload_flag.set()
         except (KeyError, ValueError):
             self.stdout.write(f'{self.JS_CONF_FILE} file have bad format\n')
         except OSError:
             pass
 
     def _update_ps(self):
-        status_str = 'on' if self.spy_job.on_flag.is_set() else 'off'
-        with self.spy_job.conf as conf:
+        status_str = 'on' if self.sniff_job.is_on else 'off'
+        with self.sniff_job.conf as conf:
             serial_str = str(conf.serial)
         sys.ps1 = f'{serial_str}:{status_str}> '
 
     @property
     def version(self):
-        return f'modbus spy tool {self.VERSION}\n'
+        return f'modbus sniffer tool {self.VERSION}\n'
 
     def on(self):
-        self.spy_job.on_flag.set()
+        self.sniff_job.on()
         self._update_ps()
 
     def off(self):
-        self.spy_job.on_flag.unset()
+        self.sniff_job.off()
         self._update_ps()
 
     def clear(self):
-        with self.spy_job.data as data:
+        with self.sniff_job.data as data:
             data.frames_l.clear()
         self._update_ps()
 
     def dump(self, n: int = 10):
         try:
-            # copy requested values from spy job
-            with self.spy_job.data as data:
+            # copy requested values from sniff job
+            with self.sniff_job.data as data:
                 dump_l = data.frames_l[-n:]
             # dump it
             for idx, frame in enumerate(dump_l):
@@ -245,8 +257,8 @@ class App:
             # frame index
             idx = 0
             while True:
-                # copy requested values from spy job
-                with self.spy_job.data as data:
+                # copy requested values from sniff job
+                with self.sniff_job.data as data:
                     dump_l = data.frames_l.copy()
                     data.frames_l.clear()
                 # dump it
@@ -265,8 +277,8 @@ class App:
 
     def analyze(self, n: int = 10):
         try:
-            # copy requested values from spy job
-            with self.spy_job.data as data:
+            # copy requested values from sniff job
+            with self.sniff_job.data as data:
                 dump_l = data.frames_l[-n:]
             # analyze frames
             fa_session = FrameAnalyzer()
@@ -284,8 +296,8 @@ class App:
             # frame index
             idx = 0
             while True:
-                # copy requested values from spy job
-                with self.spy_job.data as data:
+                # copy requested values from sniff job
+                with self.sniff_job.data as data:
                     dump_l = data.frames_l.copy()
                     data.frames_l.clear()
                 # analyze frames
@@ -305,7 +317,7 @@ class App:
 
     def save(self):
         # extract current configuration
-        with self.spy_job.conf as conf:
+        with self.sniff_job.conf as conf:
             serial_d = dict(baudrate=conf.serial.baudrate,
                             parity=conf.serial.parity_as_str,
                             stop=conf.serial.stop,
@@ -316,13 +328,13 @@ class App:
             f.write(json.dumps(conf_d))
 
 
-# overclock from default 125 MHz to 250 MHz
+# overclock Pico from default 125 MHz to 250 MHz
 # not essential, but improve responsiveness on the USB interface
 machine.freq(250_000_000)
 
 # create app instance
-spy_job = SpyJob()
-app = App(spy_job=spy_job)
+sniff_job = SniffJob()
+app = App(sniff_job=sniff_job)
 
 # shortcuts to expose on micropyhon REPL
 serial = app.serial

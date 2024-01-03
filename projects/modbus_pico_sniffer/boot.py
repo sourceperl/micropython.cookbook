@@ -1,3 +1,9 @@
+"""
+See app.py for details.
+
+Here we just import some app objects to populate REPL for autocomplete.
+"""
+
 from app import analyze, clear, dump, on, off, save, serial
 from app import _dump_rt, _analyze_rt
 
