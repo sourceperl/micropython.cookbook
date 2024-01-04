@@ -7,6 +7,7 @@ Test on Raspberry Pico (overclock to 250 MHz) with micropython v1.21.0.
 import _thread
 import json
 import machine
+import micropython
 from micropython import const
 from time import ticks_diff, ticks_us, sleep_ms
 import sys
@@ -39,7 +40,34 @@ class SniffJob:
     class Data:
         def __init__(self) -> None:
             self.lock = _thread.allocate_lock()
-            self.frames_l = []
+            # frame index: point to the head of frame list (next insert point))
+            self.frm_idx = 0
+            # frame list: ensure mem allocs for _BUF_SIZE frames of max len
+            self.frm_l = [bytearray(255)] * _BUF_SIZE
+
+        def clear(self):
+            self.lock.acquire()
+            self.frm_idx = 0
+            self.lock.release()
+
+        def exp_frm(self, clear=False):
+            # secure export of frames list (clean frm_l buffer if arg set to True)
+            self.lock.acquire()
+            # head_idx: current insert point in frm_l
+            head_idx = self.frm_idx % _BUF_SIZE
+            # frm_l map (here buffer size = 5):
+            # [ [f#3], [f#4], [f#5: head_idx (next point for insert)] [f#1], [f#2] ]
+            #  fill export list with last frames
+            exp_l = self.frm_l[:head_idx]
+            # add older frames at first places if frame index is over limit
+            if self.frm_idx > _BUF_SIZE:
+                exp_l = self.frm_l[head_idx:] + exp_l
+            # reset frame index after export
+            if clear:
+                self.frm_idx = 0
+            # release lock and return copy of frm_l
+            self.lock.release()
+            return exp_l
 
         def __enter__(self):
             self.lock.acquire()
@@ -67,6 +95,7 @@ class SniffJob:
     def off(self):
         self._rcv_flag.unset()
 
+    @micropython.native
     def run(self):
         # task loop
         while True:
@@ -74,21 +103,23 @@ class SniffJob:
             while not self._rcv_flag.is_set():
                 sleep_ms(100)
             # load UART conf
-            with self.conf as conf:
-                uart = machine.UART(_UART_ID,
-                                    tx=machine.Pin(_UART_TX_PIN, machine.Pin.IN),
-                                    rx=machine.Pin(_UART_RX_PIN, machine.Pin.IN),
-                                    baudrate=conf.serial.baudrate,
-                                    bits=conf.serial.bits,
-                                    parity=conf.serial.parity_as_int,
-                                    stop=conf.serial.stop,
-                                    timeout=-1,
-                                    timeout_char=-1,
-                                    rxbuf=256)
-                eof_us = round(conf.serial.eof_ms * 1000)
-            # clear frames list
-            with self.data as data:
-                data.frames_l.clear()
+            self.conf.lock.acquire()
+            uart = machine.UART(_UART_ID,
+                                tx=machine.Pin(_UART_TX_PIN, machine.Pin.IN),
+                                rx=machine.Pin(_UART_RX_PIN, machine.Pin.IN),
+                                baudrate=self.conf.serial.baudrate,
+                                bits=self.conf.serial.bits,
+                                parity=self.conf.serial.parity_as_int,
+                                stop=self.conf.serial.stop,
+                                timeout=-1,
+                                timeout_char=-1,
+                                rxbuf=256)
+            eof_us = round(self.conf.serial.eof_ms * 1000)
+            self.conf.lock.release()
+            # reset frames index
+            self.data.lock.acquire()
+            self.data.frm_idx = 0
+            self.data.lock.release()
             # init recv loop vars
             buf = bytearray(256)
             buf_s, _buf_s = 0, 0
@@ -109,9 +140,8 @@ class SniffJob:
                 # on next cycle, try to add the last receive frame to frames list
                 # try an immediate lock acquire or skip and try later
                 elif read_n and self.data.lock.acquire(False):
-                    if len(self.data.frames_l) >= _BUF_SIZE:
-                        self.data.frames_l.pop(0)
-                    self.data.frames_l.append(buf[:read_n])
+                    self.data.frm_l[self.data.frm_idx % _BUF_SIZE] = buf[:read_n]
+                    self.data.frm_idx += 1
                     self.data.lock.release()
                     read_n = 0
             # deinit UART
@@ -233,43 +263,47 @@ class App:
         self._update_ps()
 
     def clear(self):
-        with self.sniff_job.data as data:
-            data.frames_l.clear()
+        self.sniff_job.data.clear()
         self._update_ps()
 
     def dump(self, n: int = 10):
         try:
             # copy requested values from sniff job
-            with self.sniff_job.data as data:
-                dump_l = data.frames_l[-n:]
+            frm_l = self.sniff_job.data.exp_frm()
             # dump it
-            for idx, frame in enumerate(dump_l):
+            for msg_idx, frame in enumerate(frm_l[-n:]):
                 # format dump message
                 f_str = '-'.join(['%02X' % x for x in frame])
                 ok_str = ('ERR', 'OK')[frame_is_ok(frame)]
                 # print dump message
-                print(f'[{idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
+                print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
         except KeyboardInterrupt:
             pass
 
-    def _dump_rt(self):
+    def rt_dump(self):
+        # check sniffer is on
+        if not self.sniff_job.is_on:
+            print('unable to run real time dump: sniffer is currently off')
+            return
+        # start real time dump
         try:
             # frame index
-            idx = 0
+            msg_idx = 0
+            # avoid polluting real time list with historic value
+            self.sniff_job.data.clear()
+            # msg loop
             while True:
                 # copy requested values from sniff job
-                with self.sniff_job.data as data:
-                    dump_l = data.frames_l.copy()
-                    data.frames_l.clear()
+                frm_l = self.sniff_job.data.exp_frm(clear=True)
                 # dump it
-                for frame in dump_l:
+                for frame in frm_l:
                     # format dump message
                     f_str = '-'.join(['%02X' % x for x in frame])
                     ok_str = ('ERR', 'OK')[frame_is_ok(frame)]
                     # print dump message
-                    print(f'[{idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
+                    print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
                     # update frame index
-                    idx += 1
+                    msg_idx += 1
                 # avoid overload
                 sleep_ms(100)
         except KeyboardInterrupt:
@@ -278,38 +312,42 @@ class App:
     def analyze(self, n: int = 10):
         try:
             # copy requested values from sniff job
-            with self.sniff_job.data as data:
-                dump_l = data.frames_l[-n:]
+            frm_l = self.sniff_job.data.exp_frm()
             # analyze frames
             fa_session = FrameAnalyzer()
-            for idx, frame in enumerate(dump_l):
+            for msg_idx, frame in enumerate(frm_l[-n:]):
                 # format dump message
                 dec_str = fa_session.analyze(frame)
                 ok_str = ('ERR', 'OK')[fa_session.frm_now.is_valid]
                 # print dump message
-                print(f'[{idx:>3d}/{len(frame):>3}/{ok_str:<3}] {dec_str}')
+                print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {dec_str}')
         except KeyboardInterrupt:
             pass
 
-    def _analyze_rt(self):
+    def rt_analyze(self):
+        # check sniffer is on
+        if not self.sniff_job.is_on:
+            print('unable to run real time analyze: sniffer is currently off')
+            return
+        # start real time dump
         try:
             # frame index
-            idx = 0
+            msg_idx = 0
+            # avoid polluting real time list with historic value
+            self.sniff_job.data.clear()
             while True:
                 # copy requested values from sniff job
-                with self.sniff_job.data as data:
-                    dump_l = data.frames_l.copy()
-                    data.frames_l.clear()
+                frm_l = self.sniff_job.data.exp_frm(clear=True)
                 # analyze frames
                 fa_session = FrameAnalyzer()
-                for frame in dump_l:
+                for frame in frm_l:
                     # format dump message
                     dec_str = fa_session.analyze(frame)
                     ok_str = ('ERR', 'OK')[fa_session.frm_now.is_valid]
                     # print dump message
-                    print(f'[{idx:>3d}/{len(frame):>3}/{ok_str:<3}] {dec_str}')
+                    print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {dec_str}')
                     # update frame index
-                    idx += 1
+                    msg_idx += 1
                 # avoid overload
                 sleep_ms(100)
         except KeyboardInterrupt:
@@ -346,5 +384,5 @@ clear = app.clear
 save = app.save
 
 # experimental
-_dump_rt = app._dump_rt
-_analyze_rt = app._analyze_rt
+rt_dump = app.rt_dump
+rt_analyze = app.rt_analyze

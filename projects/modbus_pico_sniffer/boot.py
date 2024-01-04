@@ -5,7 +5,7 @@ Here we just import some app objects to populate REPL for autocomplete.
 """
 
 from app import analyze, clear, dump, on, off, save, serial
-from app import _dump_rt, _analyze_rt
+from app import rt_dump, rt_analyze
 
 
 # override default help()
@@ -15,4 +15,4 @@ def help():
 
 
 # remove unused symbols to clean REPL namespace
-# del machine, rp2
+del machine, rp2
