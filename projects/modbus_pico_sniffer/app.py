@@ -50,19 +50,19 @@ class SniffJob:
             self.frm_idx = 0
             self.lock.release()
 
+        @micropython.native
         def exp_frm(self, clear=False):
-            # secure export of frames list (clean frm_l buffer if arg set to True)
+            # secure export of frames list (clean frm_l buffer after if ad-hoc arg set to True)
             self.lock.acquire()
             # head_idx: current insert point in frm_l
             head_idx = self.frm_idx % _BUF_SIZE
-            # frm_l map (here buffer size = 5):
-            # [ [f#3], [f#4], [f#5: head_idx (next point for insert)] [f#1], [f#2] ]
-            #  fill export list with last frames
-            exp_l = self.frm_l[:head_idx]
-            # add older frames at first places if frame index is over limit
-            if self.frm_idx > _BUF_SIZE:
-                exp_l = self.frm_l[head_idx:] + exp_l
-            # reset frame index after export
+            # frm_l: [ [f#3], [f#4], [f#5: head_idx] [f#1], [f#2] ]
+            # export list with last frames
+            if self.frm_idx < _BUF_SIZE:
+                exp_l = self.frm_l[:head_idx]
+            else:
+                exp_l = self.frm_l[head_idx:] + self.frm_l[:head_idx]
+            # on request: reset frame index after export
             if clear:
                 self.frm_idx = 0
             # release lock and return copy of frm_l
@@ -111,8 +111,8 @@ class SniffJob:
                                 bits=self.conf.serial.bits,
                                 parity=self.conf.serial.parity_as_int,
                                 stop=self.conf.serial.stop,
-                                timeout=-1,
-                                timeout_char=-1,
+                                #timeout=-1,
+                                #timeout_char=-1,
                                 rxbuf=256)
             eof_us = round(self.conf.serial.eof_ms * 1000)
             self.conf.lock.release()
@@ -121,10 +121,8 @@ class SniffJob:
             self.data.frm_idx = 0
             self.data.lock.release()
             # init recv loop vars
-            buf = bytearray(256)
             buf_s, _buf_s = 0, 0
             rcv_us = 0
-            read_n = 0
             # skip first frame
             uart.read()
             # recv loop (keep this as fast as possible)
@@ -136,14 +134,10 @@ class SniffJob:
                 _buf_s = buf_s
                 # if data available and silence greater than EOF us -> read it
                 if buf_s and ticks_diff(ticks_us(), rcv_us) > eof_us:
-                    read_n = uart.readinto(buf, buf_s)
-                # on next cycle, try to add the last receive frame to frames list
-                # try an immediate lock acquire or skip and try later
-                elif read_n and self.data.lock.acquire(False):
-                    self.data.frm_l[self.data.frm_idx % _BUF_SIZE] = buf[:read_n]
+                    self.data.lock.acquire()
+                    self.data.frm_l[self.data.frm_idx % _BUF_SIZE] = uart.read(buf_s)
                     self.data.frm_idx += 1
                     self.data.lock.release()
-                    read_n = 0
             # deinit UART
             uart.deinit()
 
