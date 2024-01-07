@@ -16,7 +16,7 @@ from lib.modbus import FrameAnalyzer, frame_is_ok
 
 
 # some const
-_BUF_SIZE = const(100)
+_BUF_SIZE = const(25)
 _UART_ID = const(1)
 _UART_TX_PIN = const(4)
 _UART_RX_PIN = const(5)
@@ -54,20 +54,21 @@ class SniffJob:
         def exp_frm(self, clear=False):
             # secure export of frames list (clean frm_l buffer after if ad-hoc arg set to True)
             self.lock.acquire()
-            # head_idx: current insert point in frm_l
-            head_idx = self.frm_idx % _BUF_SIZE
-            # frm_l: [ [f#3], [f#4], [f#5: head_idx] [f#1], [f#2] ]
-            # export list with last frames
-            if self.frm_idx < _BUF_SIZE:
-                exp_l = self.frm_l[:head_idx]
-            else:
-                exp_l = self.frm_l[head_idx:] + self.frm_l[:head_idx]
-            # on request: reset frame index after export
+            # copy internal to cache (free lock as fast as possible)
+            _frm_idx = self.frm_idx
+            _frm_l = self.frm_l.copy()
+            # reset frame index after export if requested
             if clear:
                 self.frm_idx = 0
-            # release lock and return copy of frm_l
             self.lock.release()
-            return exp_l
+            # head_idx: current insert point
+            # frm_l [ [f#3], [f#4], [f#5: head_idx] [f#1], [f#2] ]
+            head_idx = _frm_idx % _BUF_SIZE
+            # export list with last frames
+            if _frm_idx < _BUF_SIZE:
+                return _frm_l[:head_idx]
+            else:
+                return _frm_l[head_idx:] + _frm_l[:head_idx]
 
         def __enter__(self):
             self.lock.acquire()
@@ -134,8 +135,9 @@ class SniffJob:
                 _buf_s = buf_s
                 # if data available and silence greater than EOF us -> read it
                 if buf_s and ticks_diff(ticks_us(), rcv_us) > eof_us:
+                    u_read = uart.read(buf_s)
                     self.data.lock.acquire()
-                    self.data.frm_l[self.data.frm_idx % _BUF_SIZE] = uart.read(buf_s)
+                    self.data.frm_l[self.data.frm_idx % _BUF_SIZE] = u_read
                     self.data.frm_idx += 1
                     self.data.lock.release()
             # deinit UART
