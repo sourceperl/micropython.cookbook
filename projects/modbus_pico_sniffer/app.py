@@ -1,7 +1,7 @@
 """
 RS-485 modbus RTU sniffer tool.
 
-Test on Raspberry Pico (overclock to 250 MHz) with micropython v1.21.0.
+Test on Raspberry Pico with micropython v1.21.0.
 """
 
 import _thread
@@ -359,15 +359,11 @@ class App:
             f.write(json.dumps(conf_d))
 
 
-# overclock Pico from default 125 MHz to 250 MHz
-# not essential, but improve responsiveness on the USB interface
-# machine.freq(250_000_000)
-
 # create app instance
 sniff_job = SniffJob()
 app = App(sniff_job=sniff_job)
 
-# shortcuts to expose on micropyhon REPL
+# shortcuts to expose on micropython REPL
 serial = app.serial
 dump = app.dump
 analyze = app.analyze
