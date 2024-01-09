@@ -14,7 +14,6 @@ import sys
 from lib.misc import ThreadFlag, SerialConf
 from lib.modbus import FrameAnalyzer, frame_is_ok
 
-
 # some const
 _BUF_SIZE = const(25)
 _UART_ID = const(1)
@@ -24,7 +23,6 @@ _UART_RX_PIN = const(5)
 
 # some class
 class SniffJob:
-
     class Conf:
         def __init__(self) -> None:
             self.lock = _thread.allocate_lock()
@@ -62,7 +60,7 @@ class SniffJob:
                 self.frm_idx = 0
             self.lock.release()
             # head_idx: current insert point
-            # frm_l [ [f#3], [f#4], [f#5: head_idx] [f#1], [f#2] ]
+            # frm_l [ [f#3], [f#4], [f#5: head_idx] [f#1], [f#2] ]
             head_idx = _frm_idx % _BUF_SIZE
             # export list with last frames
             if _frm_idx < _BUF_SIZE:
@@ -112,8 +110,8 @@ class SniffJob:
                                 bits=self.conf.serial.bits,
                                 parity=self.conf.serial.parity_as_int,
                                 stop=self.conf.serial.stop,
-                                #timeout=-1,
-                                #timeout_char=-1,
+                                # timeout=-1,
+                                # timeout_char=-1,
                                 rxbuf=256)
             eof_us = round(self.conf.serial.eof_ms * 1000)
             self.conf.lock.release()
@@ -122,22 +120,23 @@ class SniffJob:
             self.data.frm_idx = 0
             self.data.lock.release()
             # init recv loop vars
-            buf_s, _buf_s = 0, 0
+            read_nb = 0
             rcv_us = 0
             # skip first frame
             uart.read()
             # recv loop (keep this as fast as possible)
             while self._rcv_flag.is_set():
                 # mark time of arrival
-                buf_s = uart.any()
-                if buf_s > _buf_s:
+                u_any = uart.any()
+                if u_any > read_nb:
                     rcv_us = ticks_us()
-                _buf_s = buf_s
+                read_nb = u_any
                 # if data available and silence greater than EOF us -> read it
-                if buf_s and ticks_diff(ticks_us(), rcv_us) > eof_us:
-                    u_read = uart.read(buf_s)
+                if read_nb and ticks_diff(ticks_us(), rcv_us) > eof_us:
+                    read_bytes = uart.read(read_nb)
+                    read_nb = 0
                     self.data.lock.acquire()
-                    self.data.frm_l[self.data.frm_idx % _BUF_SIZE] = u_read
+                    self.data.frm_l[self.data.frm_idx % _BUF_SIZE] = read_bytes
                     self.data.frm_idx += 1
                     self.data.lock.release()
             # deinit UART
@@ -145,7 +144,6 @@ class SniffJob:
 
 
 class App:
-
     VERSION = '0.0.1'
     JS_CONF_FILE = 'config.json'
 
@@ -276,11 +274,10 @@ class App:
         except KeyboardInterrupt:
             pass
 
-    def rt_dump(self):
+    def rt_dump(self, debug: bool = False):
         # check sniffer is on
         if not self.sniff_job.is_on:
-            print('unable to run real time dump: sniffer is currently off')
-            return
+            self.on()
         # start real time dump
         try:
             # frame index
@@ -297,7 +294,8 @@ class App:
                     f_str = '-'.join(['%02X' % x for x in frame])
                     ok_str = ('ERR', 'OK')[frame_is_ok(frame)]
                     # print dump message
-                    print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
+                    if not debug or ok_str == 'ERR':
+                        print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
                     # update frame index
                     msg_idx += 1
                 # avoid overload
@@ -323,8 +321,7 @@ class App:
     def rt_analyze(self):
         # check sniffer is on
         if not self.sniff_job.is_on:
-            print('unable to run real time analyze: sniffer is currently off')
-            return
+            self.on()
         # start real time dump
         try:
             # frame index
@@ -364,7 +361,7 @@ class App:
 
 # overclock Pico from default 125 MHz to 250 MHz
 # not essential, but improve responsiveness on the USB interface
-machine.freq(250_000_000)
+# machine.freq(250_000_000)
 
 # create app instance
 sniff_job = SniffJob()
