@@ -94,13 +94,13 @@ class SerialConf:
         bit_rate_ms = 1000 / self._params.baudrate
         byte_tx_ms = bit_rate_ms * byte_len
         compute_eof_ms = 3.5 * byte_tx_ms
-        self.eof_ms = max(compute_eof_ms, 0.5)
+        self.eof_ms = max(compute_eof_ms, 0.4)
 
     def on_change(self):
         pass
 
     def __str__(self) -> str:
-        return f'{self.baudrate},{self.parity_as_str},{self.bits},{self.stop}'
+        return f'{self.baudrate},{self.parity_as_str},{self.bits},{self.stop} [eof={self.eof_ms} ms]'
 
 
 class ThreadFlag:

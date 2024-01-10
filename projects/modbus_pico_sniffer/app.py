@@ -14,6 +14,7 @@ import sys
 from lib.misc import ThreadFlag, SerialConf
 from lib.modbus import FrameAnalyzer, frame_is_ok
 
+
 # some const
 _BUF_SIZE = const(25)
 _UART_ID = const(1)
@@ -40,8 +41,8 @@ class SniffJob:
             self.lock = _thread.allocate_lock()
             # frame index: point to the head of frame list (next insert point))
             self.frm_idx = 0
-            # frame list: ensure mem allocs for _BUF_SIZE frames of max len
-            self.frm_l = [bytearray(255)] * _BUF_SIZE
+            # frame list: ensure mem allocs for _BUF_SIZE
+            self.frm_l = [bytearray()] * _BUF_SIZE
 
         def clear(self):
             self.lock.acquire()
@@ -149,61 +150,61 @@ class App:
 
     class AppSerial:
         def __init__(self, app: "App") -> None:
-            self.app = app
+            self._app = app
 
         @property
         def baudrate(self):
-            with self.app.sniff_job.conf as conf:
+            with self._app.sniff_job.conf as conf:
                 return conf.serial.baudrate
 
         @baudrate.setter
         def baudrate(self, value: int):
             try:
-                with self.app.sniff_job.conf as conf:
+                with self._app.sniff_job.conf as conf:
                     conf.serial.baudrate = value
-                self.app._update_ps()
+                self._app._update_ps()
             except ValueError as e:
                 print(e)
 
         @property
         def parity(self):
-            with self.app.sniff_job.conf as conf:
+            with self._app.sniff_job.conf as conf:
                 return conf.serial.parity_as_str
 
         @parity.setter
         def parity(self, value: str):
             try:
-                with self.app.sniff_job.conf as conf:
+                with self._app.sniff_job.conf as conf:
                     conf.serial.parity_as_str = value
-                self.app._update_ps()
+                self._app._update_ps()
             except ValueError as e:
                 print(e)
 
         @property
         def eof_ms(self):
-            with self.app.sniff_job.conf as conf:
+            with self._app.sniff_job.conf as conf:
                 return conf.serial.eof_ms
 
         @eof_ms.setter
         def eof_ms(self, value: float):
             try:
-                with self.app.sniff_job.conf as conf:
+                with self._app.sniff_job.conf as conf:
                     conf.serial.eof_ms = round(value, 3)
-                self.app._update_ps()
+                self._app._update_ps()
             except ValueError as e:
                 print(e)
 
         @property
         def stop(self):
-            with self.app.sniff_job.conf as conf:
+            with self._app.sniff_job.conf as conf:
                 return conf.serial.stop
 
         @stop.setter
         def stop(self, value: int):
             try:
-                with self.app.sniff_job.conf as conf:
+                with self._app.sniff_job.conf as conf:
                     conf.serial.stop = value
-                self.app._update_ps()
+                self._app._update_ps()
             except ValueError as e:
                 print(e)
 
@@ -239,89 +240,14 @@ class App:
             pass
 
     def _update_ps(self):
-        status_str = 'on' if self.sniff_job.is_on else 'off'
         with self.sniff_job.conf as conf:
             serial_str = str(conf.serial)
-        sys.ps1 = f'{serial_str}:{status_str}> '
+        sys.ps1 = f'{serial_str}> '
 
-    @property
-    def version(self):
-        return f'modbus sniffer tool {self.VERSION}\n'
-
-    def on(self):
-        self.sniff_job.on()
-        self._update_ps()
-
-    def off(self):
-        self.sniff_job.off()
-        self._update_ps()
-
-    def clear(self):
-        self.sniff_job.data.clear()
-        self._update_ps()
-
-    def dump(self, n: int = 10):
-        try:
-            # copy requested values from sniff job
-            frm_l = self.sniff_job.data.exp_frm()
-            # dump it
-            for msg_idx, frame in enumerate(frm_l[-n:]):
-                # format dump message
-                f_str = '-'.join(['%02X' % x for x in frame])
-                ok_str = ('ERR', 'OK')[frame_is_ok(frame)]
-                # print dump message
-                print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
-        except KeyboardInterrupt:
-            pass
-
-    def rt_dump(self, debug: bool = False):
+    def analyze(self):
         # check sniffer is on
         if not self.sniff_job.is_on:
-            self.on()
-        # start real time dump
-        try:
-            # frame index
-            msg_idx = 0
-            # avoid polluting real time list with historic value
-            self.sniff_job.data.clear()
-            # msg loop
-            while True:
-                # copy requested values from sniff job
-                frm_l = self.sniff_job.data.exp_frm(clear=True)
-                # dump it
-                for frame in frm_l:
-                    # format dump message
-                    f_str = '-'.join(['%02X' % x for x in frame])
-                    ok_str = ('ERR', 'OK')[frame_is_ok(frame)]
-                    # print dump message
-                    if not debug or ok_str == 'ERR':
-                        print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
-                    # update frame index
-                    msg_idx += 1
-                # avoid overload
-                sleep_ms(100)
-        except KeyboardInterrupt:
-            pass
-
-    def analyze(self, n: int = 10):
-        try:
-            # copy requested values from sniff job
-            frm_l = self.sniff_job.data.exp_frm()
-            # analyze frames
-            fa_session = FrameAnalyzer()
-            for msg_idx, frame in enumerate(frm_l[-n:]):
-                # format dump message
-                dec_str = fa_session.analyze(frame)
-                ok_str = ('ERR', 'OK')[fa_session.frm_now.is_valid]
-                # print dump message
-                print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {dec_str}')
-        except KeyboardInterrupt:
-            pass
-
-    def rt_analyze(self):
-        # check sniffer is on
-        if not self.sniff_job.is_on:
-            self.on()
+            self.sniff_job.on()
         # start real time dump
         try:
             # frame index
@@ -336,9 +262,38 @@ class App:
                 for frame in frm_l:
                     # format dump message
                     dec_str = fa_session.analyze(frame)
-                    ok_str = ('ERR', 'OK')[fa_session.frm_now.is_valid]
+                    ok_str = 'OK' if fa_session.frm_now.is_valid else 'ERR'
                     # print dump message
                     print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {dec_str}')
+                    # update frame index
+                    msg_idx += 1
+                # avoid overload
+                sleep_ms(100)
+        except KeyboardInterrupt:
+            pass
+
+    def dump(self):
+        # check sniffer is on
+        if not self.sniff_job.is_on:
+            self.sniff_job.on()
+        # start real time dump
+        try:
+            # frame index
+            msg_idx = 0
+            # avoid polluting real time list with historic value
+            self.sniff_job.data.clear()
+            # msg loop
+            while True:
+                # copy requested values from sniff job
+                frm_l = self.sniff_job.data.exp_frm(clear=True)
+                # dump it
+                for frame in frm_l:
+                    # format dump message
+                    f_str = '-'.join(['%02X' % x for x in frame])
+                    is_ok = frame_is_ok(frame)
+                    ok_str = 'OK' if is_ok else 'ERR'
+                    # print dump message
+                    print(f'[{msg_idx:>3d}/{len(frame):>3}/{ok_str:<3}] {f_str}')
                     # update frame index
                     msg_idx += 1
                 # avoid overload
@@ -358,20 +313,17 @@ class App:
         with open(self.JS_CONF_FILE, 'w') as f:
             f.write(json.dumps(conf_d))
 
+    def version(self):
+        print(f'modbus sniffer tool {self.VERSION}')
+
 
 # create app instance
 sniff_job = SniffJob()
 app = App(sniff_job=sniff_job)
 
 # shortcuts to expose on micropython REPL
-serial = app.serial
-dump = app.dump
 analyze = app.analyze
-on = app.on
-off = app.off
-clear = app.clear
+dump = app.dump
 save = app.save
-
-# experimental
-rt_dump = app.rt_dump
-rt_analyze = app.rt_analyze
+serial = app.serial
+version = app.version

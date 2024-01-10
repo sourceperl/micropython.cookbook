@@ -1,32 +1,23 @@
+- view modbus frame as hex dump (<ctrl+c> to exit)
+    9600,N,8,1 [eof=3.5 ms]> dump()
+
+- view decoded modbus frame (<ctrl+c> to exit)
+    9600,N,8,1 [eof=3.5 ms]> analyze()
+
+- set current serial params as startup default
+    9600,N,8,1 [eof=3.5 ms]> save()
+
+- get version of modbus sniff tool
+    9600,N,8,1 [eof=3.5 ms]> version()
+
 - set serial baudrate: valid 300-115200 bauds (default is 9600)
-    9600,N,8,1:on> serial.baudrate = 115200
+    9600,N,8,1 [eof=3.5 ms]> serial.baudrate = 115200
 
 - set serial parity: can be N (none), E is even, O is odd
-    9600,N,8,1:on> serial.parity = 'N'
+    9600,N,8,1 [eof=3.5 ms]> serial.parity = 'N'
 
 - set serial stop bit: can be 1 (default) or 2 stop bits
-    9600,N,8,1:on> serial.stop = 1
+    9600,N,8,1 [eof=3.5 ms]> serial.stop = 1
 
 - set serial end of frame detection value in ms (valid 0-1000 ms)
-    9600,N,8,1:on> serial.eof_ms = 10
-
-- view modbus frame as hex dump
-    9600,N,8,1:on> # dump 10 frames (this is default)
-    9600,N,8,1:on> dump()
-
-    9600,N,8,1:on> # dump 50 frames
-    9600,N,8,1:on> dump(50)
-
-- view decoded modbus frame
-    9600,N,8,1:on> # analyze 10 frames (this is default)
-    9600,N,8,1:on> analyze()
-    
-    9600,N,8,1:on> # analyze 50 frames
-    9600,N,8,1:on> analyze(50)
-
-- turn on/off spy (default is on at startup)
-    9600,N,8,1:off> on()
-    9600,N,8,1:on> off()
-
-- clear the frame buffer (default size is 100 frames)
-    9600,N,8,1:on> clear()
+    9600,N,8,1 [eof=3.5 ms]> serial.eof_ms = 4.0
