@@ -1,7 +1,7 @@
 """
 RS-485 modbus RTU sniffer tool.
 
-Test on Raspberry Pico with micropython v1.21.0.
+Test on SparkFun Pro Micro RP2040 with micropython v1.21.0.
 """
 
 import _thread
@@ -9,6 +9,7 @@ import json
 import machine
 import micropython
 from micropython import const
+from neopixel import NeoPixel
 from time import ticks_diff, ticks_us, sleep_ms
 import sys
 from lib.misc import ThreadFlag, SerialConf
@@ -17,9 +18,10 @@ from lib.modbus import FrameAnalyzer, frame_is_ok
 
 # some const
 _BUF_SIZE = const(25)
-_UART_ID = const(1)
-_UART_TX_PIN = const(4)
-_UART_RX_PIN = const(5)
+_UART_ID = const(0)
+_UART_TX_PIN = const(16)
+_UART_RX_PIN = const(17)
+_WS2812_PIN = const(25)
 
 
 # some class
