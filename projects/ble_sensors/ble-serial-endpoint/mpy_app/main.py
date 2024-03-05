@@ -4,6 +4,8 @@
 - SwitchBot W3400010 outdoor hygrometer thermometer
 
 Export advertising elements as json messages.
+
+Test on MicroPython v1.20.0-198-g0eacdeb1c on 2023-06-13; Raspberry Pi Pico W with RP2040
 """
 
 from micropython import const
