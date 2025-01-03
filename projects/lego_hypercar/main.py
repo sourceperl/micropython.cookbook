@@ -1,10 +1,10 @@
 """ A BLE UART peripheral, command a pico W built-in LED with on, off or toggle commands. """
 
-import bluetooth
 from lib.ble_advertising import advertising_payload
-from machine import Pin
+from machine import PWM, Pin
 from micropython import const
 
+import bluetooth
 
 # some const
 EVT_CENTRAL_CONNECT = const(1)
@@ -19,12 +19,21 @@ UART_UUID_TX = (bluetooth.UUID('6E400003-B5A3-F393-E0A9-E50E24DCCA9E'), FLAG_NOT
 UART_SERVICE = (UART_UUID, (UART_UUID_TX, UART_UUID_RX),)
 
 
-class BLE_UART:
+class BLE_CTRL:
+    """
+    BLE endpoint for control pad of android bluefruit app
+
+    app at: https://play.google.com/store/apps/details?id=com.adafruit.bluefruit.le.connect&hl=fr&pli=1
+    """
+
     def __init__(self, ble: bluetooth.BLE, name: str = '', rx_buf_size: int = 100):
-        # public args
+        # args
         self.ble = ble
         self.name = name
         self.rx_buf_size = rx_buf_size
+        # buttons handlers
+        self.btn_pressed_hdl = {}
+        self.btn_released_hdl = {}
         # init internal structs
         self._connections = set()
         self._rx_buffer = bytearray()
@@ -37,7 +46,7 @@ class BLE_UART:
         # start BLE advertising
         self._advertise()
 
-    def _advertise(self, every_us=500_000):
+    def _advertise(self, every_us: int = 500_000):
         # start BLE advertising (default rate is every 500 ms)
         self.ble.gap_advertise(every_us, advertising_payload(name=self.name, services=[UART_UUID]))
 
@@ -88,16 +97,18 @@ class BLE_UART:
         if self.any():
             # all available bytes
             rx_data = self.read()
-            # parse data
-            # print(f'raw: {rx_data}')
+            # debug
+            # print(f'debug raw: {rx_data}')
             i = 0
             while i < len(rx_data):
                 try:
                     #  search packet prefix '!'
                     if rx_data[i] == ord('!'):
                         # 2nd char is command id
+                        # "B" packets
                         if rx_data[i+1] == ord('B'):
-                            self._pkt_b(rx_data[i:i+5])
+                            self._pkt_b_hdl(rx_data[i:i+5])
+                            i += 4
                     # next char
                     i += 1
                 except IndexError:
@@ -110,8 +121,8 @@ class BLE_UART:
             _sum += c
         return _sum & 0x7f == 0x7f
 
-    def _pkt_b(self, pkt: bytearray):
-        """Process B packet."""
+    def _pkt_b_hdl(self, pkt: bytearray):
+        """B packet handler."""
         # check len
         if len(pkt) != 5:
             return
@@ -133,25 +144,65 @@ class BLE_UART:
             self._on_btn_released(btn_id)
 
     def _on_btn_pressed(self, btn_id: int):
-        print(f'btn {btn_id}: pressed')
+        try:
+            self.btn_pressed_hdl[btn_id]()
+        except KeyError:
+            pass
 
     def _on_btn_released(self, btn_id: int):
-        print(f'btn {btn_id}: relassed')
+        try:
+            self.btn_released_hdl[btn_id]()
+        except KeyError:
+            pass
+
+
+class IncVar:
+    def __init__(self, value: int = 2_000):
+        self.value = value
+
+    def dec(self, value: int = 1):
+        self.value -= value
+        print(self.value)
+
+    def inc(self, value: int = 1):
+        self.value += value
+        print(self.value)
 
 
 if __name__ == "__main__":
     # I/O init
+    # onboard led
     led = Pin('LED', Pin.OUT)
+    # init steering column servo
+    pwm_steer = PWM(Pin(27), duty_u16=0, freq=50)
+    # init forward/backward motor command
+    pwm_motor_fwd = PWM(Pin(2), duty_u16=0, freq=50)
+    pwm_motor_bwd = PWM(Pin(3), duty_u16=0, freq=50)
+
+    #  vars
+    pwm_steer_pulse_us = IncVar(2_000)
+
     # bluetooth init
     ble = bluetooth.BLE()
-    uart = BLE_UART(ble, name='LEGO_CAR')
-    # uart.on_write = lambda: print('rx: ', uart.read())
+    ble_ctrl = BLE_CTRL(ble, name='LEGO_CAR')
+
+    # buttons setup
+    ble_ctrl.btn_pressed_hdl[1] = led.on
+    ble_ctrl.btn_pressed_hdl[2] = led.off
+    # ble_ctrl.btn_pressed_hdl[3] = led.on
+    # ble_ctrl.btn_pressed_hdl[4] = led.off
+    ble_ctrl.btn_pressed_hdl[7] = lambda: pwm_steer_pulse_us.inc(25)
+    ble_ctrl.btn_pressed_hdl[8] = lambda: pwm_steer_pulse_us.dec(25)
+
     # main loop (exit with ctrl-c)
     try:
         while True:
-            uart.update()
+            # do ble stuff
+            ble_ctrl.update()
+            # do anything else here
+            pwm_steer.duty_u16(0xffff * pwm_steer_pulse_us.value//(1_000_000//pwm_steer.freq()))
     except KeyboardInterrupt:
         pass
 
     # clean on exit
-    uart.close()
+    ble_ctrl.close()
