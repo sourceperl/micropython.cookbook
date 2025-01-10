@@ -5,7 +5,7 @@
 
 Export advertising elements as json messages.
 
-Test on MicroPython v1.20.0-198-g0eacdeb1c on 2023-06-13; Raspberry Pi Pico W with RP2040
+Test on MicroPython v1.24.1 on 2024-11-29; Raspberry Pi Pico W with RP2040
 """
 
 from micropython import const
@@ -20,11 +20,12 @@ import utime
 IRQ_SCAN_RESULT = const(0x05)
 ADV_TYPE_SHORT_NAME = const(0x08)
 ADV_TYPE_COMPL_NAME = const(0x09)
+ADV_TYPE_SERVICE_DATA = const(0x16)
 ADV_MANUF_SPEC_DATA = const(0xff)
 
 
 # some func
-def decode_field(payload, adv_type):
+def decode_field(payload: bytes, adv_type: int) -> list:
     i = 0
     result = []
     while i + 1 < len(payload):
@@ -34,49 +35,55 @@ def decode_field(payload, adv_type):
     return result
 
 
-def decode_short_name(payload):
+def decode_short_name(payload: bytes) -> str:
     n = decode_field(payload, ADV_TYPE_SHORT_NAME)
     return str(n[0], 'utf8') if n else ''
 
 
-def decode_compl_name(payload):
-    n = decode_field(payload, ADV_TYPE_SHORT_NAME)
+def decode_compl_name(payload: bytes) -> str:
+    n = decode_field(payload, ADV_TYPE_COMPL_NAME)
     return str(n[0], 'utf8') if n else ''
 
 
-def on_ble_event(event, data):
+def on_ble_event(event: int, data: list):
     if event == IRQ_SCAN_RESULT:
         # scan items
         addr_type, addr_b, adv_type, rssi, adv_data = data
         bd_addr = addr_b.hex('-')
+        # extract mandatory fields
         name = decode_short_name(adv_data) or decode_compl_name(adv_data)
-        msd_l = decode_field(adv_data, ADV_MANUF_SPEC_DATA)
-        msd = msd_l[0] if msd_l else b''
+        manuf_data_l = decode_field(adv_data, ADV_MANUF_SPEC_DATA)
         # init an export dict
         export_d = OrderedDict()
         # TP357 messages
         if name.startswith('TP357'):
             # test "manufacturer specific data" is set
-            if len(msd) == 6:
-                # populate export_d with data of first MSD field
+            if manuf_data_l and len(manuf_data_l[0]) == 6:
+                # populate export_d with data of first manuf data field
+                manuf_data = manuf_data_l[0]
                 export_d['model'] = 'tp357'
                 export_d['id'] = bd_addr
-                (temp, hum) = unpack('<hB', msd[1:4])[:2]
+                (temp, hum) = unpack('<hB', manuf_data[1:4])[:2]
                 export_d['temp_c'] = float(temp/10)
                 export_d['hum_p'] = int(hum)
         # W3400010 messages
         # company ID == 0x0969 (Woan technology)
-        elif msd[:2] == b'\x69\x09':
-            if len(msd) == 14:
-                export_d['model'] = 'w3400010'
-                export_d['id'] = bd_addr
-                export_d['debug'] = msd[8:10].hex('-')
-                if msd[11] < 0x80:
-                    export_d['temp_c'] = -msd[11] + msd[10] / 10.0
-                else:
-                    export_d['temp_c'] = msd[11] - 0x80 + msd[10] / 10.0
-                export_d['hum_p'] = msd[12]
-                # export_d['batt_p'] = msd[8] & 0x7f
+        elif manuf_data_l and len(manuf_data_l[0]) == 14 and manuf_data_l[0][:2] == b'\x69\x09':
+            export_d['model'] = 'w3400010'
+            export_d['id'] = bd_addr
+            # add temp and hum data from first manuf data field
+            manuf_data = manuf_data_l[0]
+            if manuf_data[11] < 0x80:
+                export_d['temp_c'] = -manuf_data[11] + manuf_data[10] / 10.0
+            else:
+                export_d['temp_c'] = manuf_data[11] - 0x80 + manuf_data[10] / 10.0
+            export_d['hum_p'] = manuf_data[12]
+            # extract specific field
+            service_data_l = decode_field(adv_data, ADV_TYPE_SERVICE_DATA)
+            if service_data_l:
+                service_data = service_data_l[0]
+                if len(service_data) == 5 and service_data[:2] == b'\x3d\xfd':
+                    export_d['batt_p'] = service_data[4] & 0x7f
         # if export dict is set
         if export_d:
             # build json dict with mandatory fields ahead
