@@ -34,7 +34,7 @@ def decode_short_name(payload):
 
 
 def decode_compl_name(payload):
-    n = decode_field(payload, ADV_TYPE_SHORT_NAME)
+    n = decode_field(payload, ADV_TYPE_COMPL_NAME)
     return str(n[0], 'utf8') if n else ''
 
 
