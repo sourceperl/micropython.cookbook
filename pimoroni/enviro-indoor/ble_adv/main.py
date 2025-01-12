@@ -8,15 +8,14 @@ Board sensors:
 - BME688 4-in-1 temperature, pressure, humidity and gas sensor.
 - BH1745 light (luminance and colour) sensor.
 
-Push sensors data as a json message to an MQTT server (with SSL).
+Publish sensor data into a BLE advertising payload.
 
 Test with micropython VM from:
-https://github.com/pimoroni/enviro/releases/download/v0.0.9/pimoroni-picow_enviro-v1.19.10-micropython-v0.0.9.uf2
+https://github.com/pimoroni/enviro/releases/download/v0.2.0/pimoroni-enviro-v1.22.2-micropython-enviro-v0.2.0.uf2
 """
 
-
-import sys
 import struct
+import sys
 
 from breakout_bme68x import BreakoutBME68X
 from lib import logging
@@ -32,10 +31,12 @@ import bluetooth
 DEBUG_MODE = False
 REFRESH_EVERY_S = 15 * 60
 # IO pins
-HOLD_VSYS_EN_PIN = 2
-I2C_SDA_PIN = 4
-I2C_SCL_PIN = 5
-ACTIVITY_LED_PIN = 6
+HOLD_VSYS_EN_PIN = const(2)
+I2C_ID = const(0)
+I2C_SDA_PIN = const(4)
+I2C_SCL_PIN = const(5)
+I2C_FREQ = const(100_000)
+ACTIVITY_LED_PIN = const(6)
 # ble
 ADV_TYPE_FLAGS = const(0x01)
 ADV_TYPE_NAME = const(0x09)
@@ -95,12 +96,13 @@ def adv_payload(limited_disc: bool = False, br_edr: bool = False,
 
     return payload
 
+
 # IO setup
 # power rail alive pin
 hold_vsys_en_pin = Pin(HOLD_VSYS_EN_PIN, Pin.OUT)
-# read the state of vbus to know if we were woken up by USB
-vbus_present_pin = Pin('WL_GPIO2', Pin.IN)
-usb_powered = bool(vbus_present_pin.value())
+# read the state of vbus pico pin (not GPIO 2) to know if we were woken up by USB
+vbus_pin = Pin('WL_GPIO2', Pin.IN)
+usb_powered = bool(vbus_pin.value())
 # set up the activity led
 activity_led_pwm = PWM(Pin(ACTIVITY_LED_PIN))
 activity_led_pwm.freq(1000)
@@ -123,14 +125,14 @@ if DEBUG_MODE:
     log_lvl = logging.DEBUG
 logging.basicConfig(level=log_lvl, stream=sys.stdout)
 log = logging.Logger(__name__)
-log.info('device is awake')
+log.info(f'device is awake (usb powered={usb_powered})')
 
 # ticks ref
 tks_origin = ticks_ms()
 
 # init I2C devices
 log.info('init I2C bus')
-i2c = PimoroniI2C(I2C_SDA_PIN, I2C_SCL_PIN, 100_000)
+i2c = PimoroniI2C(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ)
 # intialise the pcf85063a real time clock chip
 log.info('init RTC')
 rtc = PCF85063A(i2c)
@@ -160,10 +162,10 @@ try:
 
     # advertise
     log.info('start BLE advertise')
-    adv_data = adv_payload(name='env-indoor', service_data=[(0x2A6E, struct.pack('<h', int(temperature * 100))),])
+    adv_data = adv_payload(name='env-indoor',
+                           service_data=[(0x2A6E, struct.pack('<h', int(temperature * 100))),])
     ble.gap_advertise(interval_us=125_000, connectable=False, adv_data=adv_data)
-    sleep_ms(600)
-    ble.active(False)
+    sleep_ms(300)
 except Exception as e:
     log.exc(e, 'an except occur')
 
@@ -197,4 +199,4 @@ log.info('shutting down now')
 hold_vsys_en_pin.value(False)
 
 # turn off activity flag
-#activity_led_pwm.duty_u16(0)
+activity_led_pwm.duty_u16(0)
