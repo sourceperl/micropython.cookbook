@@ -46,6 +46,9 @@ ADV_TYPE_UUID128_COMPLETE = const(0x7)
 ADV_TYPE_SERVICE_DATA = const(0x16)
 ADV_TYPE_APPEARANCE = const(0x19)
 ADV_MAX_PAYLOAD = const(31)
+TEMP_UUID = const(0x2A6E)
+HUM_UUID = const(0x2A6F)
+PRE_UUID = const(0x2A6D)
 
 
 # some function
@@ -156,14 +159,17 @@ try:
     log.info('read sensors')
     data = bme688.read()
     temperature = round(data[0], 2)
-    # pressure = round(data[1] / 100.0, 2)
+    pressure = round(data[1] / 100.0, 2)
     humidity = round(data[2], 2)
     # gas_resistance = round(data[3])
 
     # advertise
     log.info('start BLE advertise')
-    adv_data = adv_payload(name='env-indoor',
-                           service_data=[(0x2A6E, struct.pack('<h', int(temperature * 100))),])
+    adv_data = adv_payload(name='env-in',
+                           service_data=[(TEMP_UUID, struct.pack('<h', int(temperature * 100))),
+                                         (HUM_UUID, struct.pack('<H', int(humidity * 100))),
+                                         (PRE_UUID, struct.pack('<I', int(pressure * 1_000))),
+                                         ])
     ble.gap_advertise(interval_us=125_000, connectable=False, adv_data=adv_data)
     sleep_ms(300)
 except Exception as e:
