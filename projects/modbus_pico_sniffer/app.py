@@ -1,20 +1,26 @@
 """
 RS-485 modbus RTU sniffer tool.
 
-Test on SparkFun Pro Micro RP2040 with micropython v1.21.0.
+Test on board SparkFun Pro Micro RP2040.
+
+Issues with MicroPython versions greater than v1.21.0.
+Further testing with MicroPython 1.25.0-preview.273.gb2ce9b6fb (2025-02-08) indicates that the functionality
+has been restored.
+This improvement is likely due to the fix for 'rp2/rp2_flash: multicore lock workaround not reset.'
 """
 
 import _thread
 import json
-import machine
-import micropython
-from micropython import const
-from neopixel import NeoPixel
-from time import ticks_diff, ticks_us, sleep_ms
 import sys
-from lib.misc import ThreadFlag, SerialConf
-from lib.modbus import FrameAnalyzer, frame_is_ok
+from time import sleep_ms, ticks_diff, ticks_us
 
+import micropython
+from lib.misc import SerialConf, ThreadFlag
+from lib.modbus import FrameAnalyzer, frame_is_ok
+from machine import UART, Pin
+from micropython import const
+
+from neopixel import NeoPixel
 
 # some const
 _BUF_SIZE = const(25)
@@ -86,6 +92,8 @@ class SniffJob:
         self.data = self.Data()
         # flags
         self._rcv_flag = ThreadFlag()
+        # I/O LED
+        self.io_led = NeoPixel(Pin(_WS2812_PIN), 1)
 
     @property
     def is_on(self):
@@ -106,16 +114,16 @@ class SniffJob:
                 sleep_ms(100)
             # load UART conf
             self.conf.lock.acquire()
-            uart = machine.UART(_UART_ID,
-                                tx=machine.Pin(_UART_TX_PIN, machine.Pin.IN),
-                                rx=machine.Pin(_UART_RX_PIN, machine.Pin.IN),
-                                baudrate=self.conf.serial.baudrate,
-                                bits=self.conf.serial.bits,
-                                parity=self.conf.serial.parity_as_int,
-                                stop=self.conf.serial.stop,
-                                # timeout=-1,
-                                # timeout_char=-1,
-                                rxbuf=256)
+            uart = UART(_UART_ID,
+                        tx=Pin(_UART_TX_PIN, Pin.IN),
+                        rx=Pin(_UART_RX_PIN, Pin.IN),
+                        baudrate=self.conf.serial.baudrate,
+                        bits=self.conf.serial.bits,
+                        parity=self.conf.serial.parity_as_int,
+                        stop=self.conf.serial.stop,
+                        # timeout=-1,
+                        # timeout_char=-1,
+                        rxbuf=256)
             eof_us = round(self.conf.serial.eof_ms * 1000)
             self.conf.lock.release()
             # reset frames index
@@ -237,7 +245,7 @@ class App:
                 conf.serial.stop = serial_d.get('stop', conf.serial.stop)
                 conf.serial.eof_ms = serial_d.get('eof_ms', conf.serial.eof_ms)
         except (KeyError, ValueError):
-            self.stdout.write(f'{self.JS_CONF_FILE} file have bad format\n')
+            print(f'{self.JS_CONF_FILE} file have bad format\n')
         except OSError:
             pass
 
