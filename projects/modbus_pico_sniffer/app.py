@@ -115,7 +115,7 @@ class SniffJob:
             # load UART conf
             self.conf.lock.acquire()
             uart = UART(_UART_ID,
-                        tx=Pin(_UART_TX_PIN, Pin.IN),
+                        tx=Pin(_UART_TX_PIN, Pin.OUT),
                         rx=Pin(_UART_RX_PIN, Pin.IN),
                         baudrate=self.conf.serial.baudrate,
                         bits=self.conf.serial.bits,
